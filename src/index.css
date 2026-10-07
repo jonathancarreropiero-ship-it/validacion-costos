@@ -1,0 +1,1717 @@
+/* =========================================================
+   VALIDACIÓN DE COSTOS - SISTEMA VISUAL GLOBAL PROFESIONAL
+   ========================================================= */
+
+:root {
+  --primary: #1e40af;       /* Azul corporativo profundo y sobrio */
+  --primary-dark: #1e3a8a;
+  --primary-light: #eff6ff;
+  --primary-border: #bfdbfe;
+
+  --success: #15803d;       /* Verde institucional limpio */
+  --success-light: #f0fdf4;
+  --success-border: #bbf7d0;
+
+  --danger: #b91c1c;        /* Rojo alerta refinado */
+  --danger-light: #fef2f2;
+  --danger-border: #fecaca;
+
+  --warning: #b45309;       /* Ámbar / Naranja advertencia */
+  --warning-light: #fffbeb;
+  --warning-border: #fde68a;
+
+  --bg: #f8fafc;            /* Fondo general de la aplicación */
+  --surface: #ffffff;       /* Fondo de tarjetas y contenedores */
+  --surface-hover: #f1f5f9;
+
+  --text: #334155;          /* Texto general neutral oscuro */
+  --text-dark: #0f172a;     /* Títulos principales */
+  --text-muted: #64748b;    /* Subtítulos y etiquetas secundarias */
+
+  --border: #cbd5e1;        /* Bordes estándar */
+  --border-light: #e2e8f0;  /* Líneas divisorias suaves */
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.08);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+
+  --transition: 0.2s ease-in-out;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================================
+   CONTENEDORES PRINCIPALES (CENTRADO Y MÁXIMO ANCHO)
+   ========================================================= */
+
+.app-container,
+.auditor-page,
+.admin-dashboard,
+.page-container,
+.nuevo-costo,
+.detalle-costo,
+.admin-conteo,
+.auditor-costos,
+.login-page {
+  width: 100%;
+  max-width: 1350px;
+  margin: 0 auto;
+  padding: 24px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-page {
+  justify-content: center;
+  align-items: center;
+  max-width: 440px;
+}
+
+/* =========================================================
+   CABECERAS / TOPBARS UNIFICADAS
+   ========================================================= */
+
+.auditor-topbar,
+.auditor-dashboard-header,
+.admin-dashboard-header,
+.page-header,
+.auditor-cost-header,
+.admin-conteo-header,
+.nuevo-costo-header,
+.detalle-costo-header {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+h1, h2, h3, h4,
+.page-title,
+.admin-dashboard-heading-content h2,
+.auditor-cost-number,
+.detalle-costo-header h2 {
+  margin: 0;
+  color: var(--text-dark);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+p, span, label {
+  color: var(--text-muted);
+}
+
+/* =========================================================
+   TARJETAS DE RESUMEN Y ESTADÍSTICAS (4 COLUMNAS)
+   ========================================================= */
+
+.auditor-summary,
+.admin-conteo-resumen,
+.costos-summary-grid,
+.stats-grid,
+.detalle-costo-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.summary-item,
+.admin-conteo-resumen-item,
+.costos-summary-card,
+.stat-card,
+.detalle-costo-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.summary-item strong,
+.admin-conteo-resumen-item strong,
+.costos-summary-card strong,
+.stat-card strong,
+.detalle-costo-summary-card strong {
+  font-size: 24px;
+  color: var(--text-dark);
+  font-weight: 800;
+}
+
+/* =========================================================
+   BARRAS DE HERRAMIENTAS Y BUSCADORES
+   ========================================================= */
+
+.auditor-tools,
+.admin-conteo-toolbar,
+.costos-toolbar,
+.auditor-costos-search {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.auditor-search,
+.admin-conteo-search,
+.costos-search,
+.search-container {
+  flex: 1;
+  max-width: 400px;
+  position: relative;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-dark);
+  font-size: 13px;
+  outline: none;
+  transition: var(--transition);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+}
+
+/* =========================================================
+   BOTONES UNIFICADOS (ACCIONES LIMPIAS Y JERARQUIZADAS)
+   ========================================================= */
+
+button,
+.btn,
+.btn-primary,
+.btn-success,
+.btn-danger,
+.admin-conteo-btn-principal,
+.costos-admin-count-button,
+.auditor-start-button,
+.btn-guardar-costo,
+.login-button,
+.logout-button,
+.admin-dashboard-logout {
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: var(--transition);
+  border: 1px solid transparent;
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.btn-primary,
+.admin-conteo-btn-principal,
+.costos-admin-count-button,
+.auditor-start-button,
+.btn-guardar-costo,
+.login-button {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover,
+.admin-conteo-btn-principal:hover,
+.costos-admin-count-button:hover,
+.auditor-start-button:hover,
+.btn-guardar-costo:hover,
+.login-button:hover {
+  background: var(--primary-dark);
+}
+
+.btn-guardar-costo {
+  background: var(--success);
+  color: #fff;
+}
+.btn-guardar-costo:hover {
+  background: var(--success-dark);
+}
+
+.btn-secondary,
+.logout-button,
+.admin-dashboard-logout {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover,
+.logout-button:hover,
+.admin-dashboard-logout:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-muted);
+}
+
+/* =========================================================
+   TABLAS PROFESIONALES CON LÍNEAS DIVISORIAS CLARAS
+   ========================================================= */
+
+.auditor-table-container,
+.admin-conteo-tabla-card,
+.costos-table-wrapper,
+.auditor-costos-table-wrapper,
+.detalle-costo-products,
+.table-container {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  width: 100%;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th {
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 14px 16px;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+  color: var(--text);
+  font-size: 13px;
+}
+
+tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* =========================================================
+   CELDAS DE CONTEO Y CASILLEROS INTERNOS
+   ========================================================= */
+
+.conteo-inline,
+.admin-conteo-cantidades {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 230px;
+  background: #f8fafc;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+}
+
+.conteo-inline-cantidades,
+.admin-conteo-cantidad-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.conteo-input,
+.conteo-factor-input,
+.admin-conteo-cantidad-input,
+.admin-conteo-factor {
+  width: 100%;
+  height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-size: 13px;
+}
+
+.btn-validar-sku,
+.admin-conteo-validar {
+  width: 100%;
+  height: 36px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-weight: 650;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-validar-sku:hover {
+  background: var(--primary-dark);
+}
+
+/* =========================================================
+   SECCIÓN DE NO MANIFESTADOS
+   ========================================================= */
+
+.auditor-no-manifestados,
+.auditor-nomanifestados {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.no-manifestados-form,
+.auditor-nomanifestado-form {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 2fr auto;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 16px;
+}
+
+/* =========================================================
+   ESTADOS Y BADGES DE RESULTADO (COLORES INSTITUCIONALES)
+   ========================================================= */
+
+.resultado-badge,
+.conteo-pill,
+.resultado-pill,
+.estado-badge,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.resultado-badge.conforme,
+.resultado-pill.conforme,
+.estado-badge.terminado,
+.badge-success {
+  background: var(--success-light);
+  color: var(--success);
+  border: 1px solid var(--success-border);
+}
+
+.resultado-badge.diferencia,
+.resultado-pill.diferencia,
+.badge-danger {
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+}
+
+.conteo-pill.active,
+.estado-badge.proceso,
+.badge-primary {
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--primary-border);
+}
+
+/* =========================================================
+   BARRA INFERIOR DE GUARDADO
+   ========================================================= */
+
+.auditor-save-section {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+}
+
+.auditor-save-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* =========================================================
+   DISEÑO RESPONSIVE ADAPTATIVO
+   ========================================================= */
+
+@media (max-width: 1100px) {
+  .auditor-summary,
+  .admin-conteo-resumen,
+  .costos-summary-grid,
+  .stats-grid,
+  .detalle-costo-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .auditor-topbar,
+  .auditor-dashboard-header,
+  .admin-dashboard-header,
+  .page-header,
+  .auditor-cost-header,
+  .admin-conteo-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auditor-tools,
+  .admin-conteo-toolbar,
+  .costos-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auditor-search,
+  .admin-conteo-search,
+  .costos-search {
+    max-width: none;
+  }
+
+  .no-manifestados-form,
+  .auditor-nomanifestado-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .auditor-save-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-container,
+  .auditor-page,
+  .admin-dashboard,
+  .page-container,
+  .nuevo-costo,
+  .detalle-costo {
+    padding: 12px;
+  }
+
+  .auditor-summary,
+  .admin-conteo-resumen,
+  .costos-summary-grid,
+  .stats-grid,
+  .detalle-costo-summary,
+  .no-manifestados-form,
+  .auditor-nomanifestado-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* =========================================================
+   ESTILOS ESPECÍFICOS - VISTA LOGIN
+   ========================================================= */
+
+.login-page {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+}
+
+/* Formas decorativas de fondo sutiles */
+.login-background-shape {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: 0;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.shape-one {
+  width: 350px;
+  height: 350px;
+  background: #bfdbfe;
+  top: -100px;
+  left: -100px;
+}
+
+.shape-two {
+  width: 400px;
+  height: 400px;
+  background: #e0e7ff;
+  bottom: -120px;
+  right: -120px;
+}
+
+.login-wrapper {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.25);
+}
+
+.login-brand-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.login-brand-kicker {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-brand-info h1 {
+  font-size: 18px;
+  color: var(--text-dark);
+}
+
+.login-brand-info p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.login-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.login-input-wrapper input {
+  padding-left: 38px;
+}
+
+.login-error {
+  background: var(--danger-light);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.login-error-icon {
+  background: var(--danger);
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.login-error-content strong {
+  display: block;
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 750;
+}
+
+.login-error-content p {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #7f1d1d;
+}
+
+.login-button {
+  width: 100%;
+  height: 42px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
+}
+
+.login-button:hover {
+  background: var(--primary-dark);
+}
+
+.login-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.login-footer-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.login-footer-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-security {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+
+/* =========================================================
+   ESTILOS ESPECÍFICOS - MÓDULO AUDITOR (COSTOS Y DASHBOARD)
+   ========================================================= */
+
+.auditor-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auditor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+/* Alertas de éxito y error */
+.auditor-alert {
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.auditor-alert.success {
+  background: var(--success-light);
+  border: 1px solid var(--success-border);
+  color: var(--success);
+}
+
+.auditor-alert.error {
+  background: var(--danger-light);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+}
+
+.auditor-alert-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.auditor-alert.success .auditor-alert-icon {
+  background: var(--success);
+  color: #fff;
+}
+
+.auditor-alert.error .auditor-alert-icon {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Botones de acción del auditor */
+.btn-logout,
+.btn-volver,
+.btn-costo {
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: var(--transition);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.btn-logout:hover,
+.btn-volver:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-muted);
+}
+
+.btn-costo {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  width: 100%;
+}
+
+.btn-costo:hover {
+  background: var(--primary-dark);
+}
+
+.btn-costo.bloqueado {
+  background: var(--border-light);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Filtros rápidos del auditor */
+.auditor-filter-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auditor-filter {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.auditor-filter:hover {
+  background: var(--surface-hover);
+  color: var(--text-dark);
+}
+
+.auditor-filter.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.auditor-filter.active.conforme {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.auditor-filter.active.diferencia {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Sección de No Manifestados */
+.auditor-no-manifestados {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auditor-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.auditor-section-kicker,
+.auditor-costos-kicker,
+.auditor-dashboard-kicker {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.auditor-section-badge {
+  background: var(--primary-light);
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.btn-no-manifestado-agregar {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 650;
+  border-radius: var(--radius-sm);
+  padding: 0 18px;
+  height: 40px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition);
+}
+
+.btn-no-manifestado-agregar:hover {
+  background: var(--primary-dark);
+}
+
+.btn-no-manifestado-eliminar {
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-no-manifestado-eliminar:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+
+/* =========================================================
+   MEJORA ESTÉTICA - CONTENEDOR DE CANTIDADES MÚLTIPLES
+   ========================================================= */
+
+.conteo-inline,
+.admin-conteo-cantidades {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 240px;
+  background: #f8fafc;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+.conteo-inline-cantidades,
+.admin-conteo-cantidad-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 160px; /* Altura máxima para evitar que crezca demasiado */
+  overflow-y: auto;  /* Scroll interno si hay muchas cantidades */
+  padding-right: 4px;
+}
+
+/* Fila horizontal: Input y botón de eliminar al lado */
+.conteo-cantidad-item,
+.admin-conteo-cantidad-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.conteo-cantidad-item .conteo-input,
+.admin-conteo-cantidad-row .admin-conteo-cantidad-input {
+  flex: 1;
+  height: 36px;
+  margin: 0;
+}
+
+/* Botón de eliminar (×) compacto al lado del input */
+.btn-eliminar-cantidad,
+.admin-conteo-eliminar {
+  width: 32px;
+  height: 36px;
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.btn-eliminar-cantidad:hover,
+.admin-conteo-eliminar:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Botón para agregar nueva cantidad */
+.btn-agregar-cantidad,
+.admin-conteo-agregar {
+  width: 100%;
+  height: 32px;
+  background: #fff;
+  border: 1px dashed var(--primary-border);
+  color: var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: var(--transition);
+}
+
+.btn-agregar-cantidad:hover,
+.admin-conteo-agregar:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+
+/* =========================================================
+   ESTÉTICA COMPACTA - CANTIDADES MÚLTIPLES EN CONTEOS
+   ========================================================= */
+
+.conteo-inline,
+.admin-conteo-cantidades {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 240px;
+  background: #f8fafc;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+}
+
+.conteo-inline-cantidades,
+.admin-conteo-cantidad-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* Fila horizontal: Input y botón de eliminar al lado */
+.conteo-cantidad-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.conteo-cantidad-item .conteo-input {
+  flex: 1;
+  height: 36px;
+  margin: 0;
+}
+
+/* Botón de eliminar (×) compacto al lado */
+.btn-eliminar-cantidad {
+  width: 32px;
+  height: 36px;
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.btn-eliminar-cantidad:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Botón para agregar cantidad */
+.btn-agregar-cantidad {
+  width: 100%;
+  height: 32px;
+  background: #fff;
+  border: 1px dashed var(--primary-border);
+  color: var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: var(--transition);
+}
+
+.btn-agregar-cantidad:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+/* =========================================================
+   MEJORA ESTÉTICA - RESULTADO Y CANTIDAD FINAL EN CONTEOS
+   ========================================================= */
+
+.conteo-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Contenedor unificado para la cantidad final */
+.conteo-final-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f1f5f9;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-top: 4px;
+}
+
+.conteo-final-label {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.conteo-final-info strong {
+  font-size: 15px;
+  color: var(--text-dark);
+  font-weight: 800;
+}
+
+/* Asegurar que las insignias de resultado tengan buen espaciado */
+.resultado-badge {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+}
+
+
+/* =========================================================
+   MEJORA VISUAL - DASHBOARD ADMINISTRADOR GENERAL
+   ========================================================= */
+
+.admin-dashboard {
+  background-color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 1. Header Superior Moderno */
+.admin-dashboard-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.admin-dashboard-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-dashboard-brand-mark {
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  color: #ffffff;
+  font-weight: 800;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  letter-spacing: -0.5px;
+  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.2);
+}
+
+.admin-dashboard-kicker {
+  font-size: 10px;
+  font-weight: 750;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-brand-info h1 {
+  font-size: 18px;
+  font-weight: 750;
+  color: #0f172a;
+  margin: 0;
+}
+
+/* 2. Sección de Usuario y Sesión */
+.admin-dashboard-user {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.admin-dashboard-user-info {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-dashboard-user-role {
+  font-size: 12px;
+  font-weight: 750;
+  color: #4e6ccf;
+}
+
+.admin-dashboard-user-email {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.admin-dashboard-user-avatar {
+  background: #e2e8f0;
+  color: #334155;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 750;
+  font-size: 14px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.admin-dashboard-logout {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.admin-dashboard-logout:hover {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+
+/* 3. Encabezado de Página y Botón de Acción */
+.admin-dashboard-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32px 32px 0 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.admin-dashboard-section-kicker {
+  font-size: 11px;
+  font-weight: 750;
+  color: #3b82f6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-page-heading h2 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 4px 0;
+  letter-spacing: -0.02em;
+}
+
+.admin-dashboard-page-heading p {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+}
+
+.admin-dashboard-primary-button {
+  background: #5573d4;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.25);
+  transition: all 0.2s ease;
+}
+
+.admin-dashboard-primary-button:hover {
+  background: #5d7acb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(30, 64, 175, 0.3);
+}
+
+.admin-dashboard-content {
+  padding: 24px 32px;
+}
+
+.admin-dashboard-footer {
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  padding: 16px 32px;
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: auto;
+}
+
+
+
+/* =========================================================
+   MEJORA VISUAL - AUDITOR DASHBOARD (ESTILO SAAS)
+   ========================================================= */
+
+.auditor-page {
+  background-color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.auditor-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* 1. Header Superior Moderno */
+.auditor-dashboard-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.auditor-dashboard-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auditor-dashboard-kicker {
+  font-size: 10px;
+  font-weight: 750;
+  color: #3b82f6;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.auditor-dashboard-heading h1 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.auditor-dashboard-heading p {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* 2. Botón Salir */
+.btn-logout {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.btn-logout:hover {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+  transform: translateY(-1px);
+}
+
+.btn-logout-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* 3. Alertas y Notificaciones */
+.auditor-alert {
+  margin: 20px 32px 0 32px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.auditor-alert.success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #dcfce7;
+}
+
+.auditor-alert.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fee2e2;
+}
+
+.auditor-alert-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.auditor-alert.success .auditor-alert-icon {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.auditor-alert.error .auditor-alert-icon {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ============================================================
+   INDICADOR DE CONEXIÓN
+============================================================ */
+
+.auditor-dashboard-header-actions,
+.auditor-topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* ------------------------------------------------------------
+   CONTENEDOR
+------------------------------------------------------------ */
+
+.conexion-indicador {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+
+  min-width: 150px;
+
+  padding: 8px 12px;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--surface);
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+/* ------------------------------------------------------------
+   PUNTO
+------------------------------------------------------------ */
+
+.conexion-indicador-dot {
+  width: 8px;
+  height: 8px;
+
+  flex: 0 0 8px;
+
+  border-radius: 50%;
+}
+
+/* ------------------------------------------------------------
+   TEXTO
+------------------------------------------------------------ */
+
+.conexion-indicador-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  min-width: 0;
+}
+
+.conexion-indicador-info strong {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+
+  color: var(--text-dark);
+}
+
+.conexion-indicador-info span {
+  font-size: 10px;
+  line-height: 1.3;
+
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   CONECTADO
+------------------------------------------------------------ */
+
+.conexion-online {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.conexion-online
+.conexion-indicador-dot {
+  background: #16a34a;
+
+  box-shadow:
+    0 0 0 3px #dcfce7;
+}
+
+/* ------------------------------------------------------------
+   SIN CONEXIÓN
+------------------------------------------------------------ */
+
+.conexion-offline {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.conexion-offline
+.conexion-indicador-dot {
+  background: #d97706;
+
+  box-shadow:
+    0 0 0 3px #fef3c7;
+}
+
+/* ------------------------------------------------------------
+   RESPONSIVE
+------------------------------------------------------------ */
+
+@media (max-width: 760px) {
+
+  .auditor-dashboard-header-actions,
+  .auditor-topbar-actions {
+    width: 100%;
+
+    justify-content: space-between;
+  }
+
+  .conexion-indicador {
+    flex: 1;
+  }
+
+}
+
+@media (max-width: 520px) {
+
+  .auditor-dashboard-header-actions,
+  .auditor-topbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .conexion-indicador {
+    width: 100%;
+  }
+
+  .auditor-dashboard-header-actions
+  .btn-logout,
+  .auditor-topbar-actions
+  .btn-logout {
+    width: 100%;
+  }
+
+}
