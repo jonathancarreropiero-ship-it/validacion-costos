@@ -5,6 +5,10 @@ import {
   validarConteo
 } from '../../services/costos'
 
+import {
+  obtenerAuditoriaOffline
+} from '../../services/offlineStorage'
+
 function ConteoAuditor({
   detalle,
   numeroConteo,
@@ -13,6 +17,7 @@ function ConteoAuditor({
   onRegistrado,
   onCambio
 }) {
+
   const [cantidades, setCantidades] = useState([''])
   const [factor, setFactor] = useState('1')
   const [resultado, setResultado] = useState(null)
@@ -28,7 +33,9 @@ function ConteoAuditor({
   // ==========================================================
 
   const obtenerClaveBorrador = () => {
+
     return `validacion-costos-usuario-${usuarioId}-costo-${costoId}-detalle-${detalle.id}-conteo-${numeroConteo}`
+
   }
 
   // ==========================================================
@@ -39,6 +46,7 @@ function ConteoAuditor({
     nuevasCantidades,
     nuevoFactor
   ) => {
+
     if (!onCambio) {
       return
     }
@@ -49,22 +57,30 @@ function ConteoAuditor({
       cantidades: nuevasCantidades,
       factor: nuevoFactor
     })
+
   }
 
   // ==========================================================
   // GUARDAR BORRADOR LOCAL
   // ==========================================================
 
-  const guardarBorradorLocal = (
+  const guardarBorradorLocal = async (
     nuevasCantidades,
     nuevoFactor
   ) => {
+
     if (!usuarioId || !costoId || !detalle?.id) {
       return
     }
 
     try {
-      const clave = obtenerClaveBorrador()
+
+      // ------------------------------------------------------
+      // 1. GUARDAR EN LOCALSTORAGE
+      // ------------------------------------------------------
+
+      const clave =
+        obtenerClaveBorrador()
 
       const borrador = {
         usuarioId,
@@ -81,63 +97,155 @@ function ConteoAuditor({
         JSON.stringify(borrador)
       )
 
+      // ------------------------------------------------------
+      // IMPORTANTE:
+      // No usamos guardarDetalleAuditoriaOffline porque
+      // esa función no existe en offlineStorage.js.
+      //
+      // El detalle se conserva en localStorage y el
+      // snapshot completo de la auditoría se maneja desde
+      // AuditorDashboard.
+      // ------------------------------------------------------
+
       setBorradorGuardado(true)
+
     } catch (err) {
+
       console.error(
         'No se pudo guardar el borrador local:',
         err
       )
+
     }
+
   }
 
   // ==========================================================
   // CARGAR BORRADOR LOCAL
   // ==========================================================
 
-  const cargarBorradorLocal = () => {
+  const cargarBorradorLocal = async () => {
+
     if (!usuarioId || !costoId || !detalle?.id) {
       return null
     }
 
     try {
-      const clave = obtenerClaveBorrador()
+
+      // ======================================================
+      // 1. PRIMERO BUSCAR EN LOCALSTORAGE
+      // ======================================================
+
+      const clave =
+        obtenerClaveBorrador()
 
       const guardado =
         localStorage.getItem(clave)
 
-      if (!guardado) {
+      if (guardado) {
+
+        const borrador =
+          JSON.parse(guardado)
+
+        if (
+          borrador &&
+          String(borrador.usuarioId) === String(usuarioId) &&
+          Number(borrador.costoId) === Number(costoId) &&
+          Number(borrador.detalleId) === Number(detalle.id) &&
+          Number(borrador.numeroConteo) === Number(numeroConteo)
+        ) {
+
+          if (
+            Array.isArray(borrador.cantidades) &&
+            borrador.cantidades.length > 0
+          ) {
+
+            return borrador
+
+          }
+
+        }
+
+      }
+
+      // ======================================================
+      // 2. SI NO EXISTE, BUSCAR EN INDEXEDDB
+      // ======================================================
+
+      const auditoriaOffline =
+        await obtenerAuditoriaOffline({
+          costoId,
+          usuarioId,
+          numeroConteo
+        })
+
+      if (!auditoriaOffline) {
         return null
       }
 
-      const borrador =
-        JSON.parse(guardado)
+      const detallesOffline =
+        Array.isArray(
+          auditoriaOffline.detalles
+        )
+          ? auditoriaOffline.detalles
+          : []
+
+      const detalleOffline =
+        detallesOffline.find(
+          item =>
+            String(item.detalleId) ===
+              String(detalle.id) &&
+            Number(item.numeroConteo) ===
+              Number(numeroConteo)
+        )
+
+      if (!detalleOffline) {
+        return null
+      }
 
       if (
-        !borrador ||
-        String(borrador.usuarioId) !== String(usuarioId) ||
-        Number(borrador.costoId) !== Number(costoId) ||
-        Number(borrador.detalleId) !== Number(detalle.id) ||
-        Number(borrador.numeroConteo) !== Number(numeroConteo)
+        !Array.isArray(
+          detalleOffline.cantidades
+        ) ||
+        detalleOffline.cantidades.length === 0
       ) {
         return null
       }
 
-      if (
-        !Array.isArray(borrador.cantidades) ||
-        borrador.cantidades.length === 0
-      ) {
-        return null
+      return {
+
+        usuarioId,
+
+        costoId,
+
+        detalleId: detalle.id,
+
+        numeroConteo,
+
+        cantidades:
+          detalleOffline.cantidades,
+
+        factor:
+          detalleOffline.factor ??
+          '1',
+
+        updatedAt:
+          detalleOffline.actualizadoEn ??
+          null
+
       }
 
-      return borrador
     } catch (err) {
+
       console.error(
         'Error leyendo borrador local:',
         err
       )
 
       return null
+
     }
+
   }
 
   // ==========================================================
@@ -145,9 +253,11 @@ function ConteoAuditor({
   // ==========================================================
 
   useEffect(() => {
+
     let activo = true
 
     async function cargarConteo() {
+
       setError('')
       setResultado(null)
       setCantidadTotal(null)
@@ -159,9 +269,10 @@ function ConteoAuditor({
       // ------------------------------------------------------
 
       const borrador =
-        cargarBorradorLocal()
+        await cargarBorradorLocal()
 
       if (borrador) {
+
         if (!activo) {
           return
         }
@@ -194,6 +305,7 @@ function ConteoAuditor({
         )
 
         return
+
       }
 
       // ------------------------------------------------------
@@ -201,7 +313,9 @@ function ConteoAuditor({
       // ------------------------------------------------------
 
       if (Number(numeroConteo) === 1) {
+
         setCantidades([''])
+
         setFactor('1')
 
         informarCambio(
@@ -210,6 +324,7 @@ function ConteoAuditor({
         )
 
         return
+
       }
 
       // ------------------------------------------------------
@@ -217,6 +332,7 @@ function ConteoAuditor({
       // ------------------------------------------------------
 
       try {
+
         setLoadingAnterior(true)
 
         const anterior =
@@ -230,6 +346,7 @@ function ConteoAuditor({
         }
 
         if (anterior) {
+
           const cantidadesAnteriores =
             Array.isArray(anterior.cantidades) &&
             anterior.cantidades.length > 0
@@ -257,16 +374,22 @@ function ConteoAuditor({
             cantidadesAnteriores,
             Number(factorAnterior)
           )
+
         } else {
+
           setCantidades([''])
+
           setFactor('1')
 
           informarCambio(
             [''],
             1
           )
+
         }
+
       } catch (err) {
+
         if (!activo) {
           return
         }
@@ -277,18 +400,25 @@ function ConteoAuditor({
           err?.message ||
           'No se pudo cargar el conteo anterior.'
         )
+
       } finally {
+
         if (activo) {
           setLoadingAnterior(false)
         }
+
       }
+
     }
 
     cargarConteo()
 
     return () => {
+
       activo = false
+
     }
+
   }, [
     detalle.id,
     numeroConteo,
@@ -300,9 +430,10 @@ function ConteoAuditor({
   // VALIDAR FORMATO NUMÉRICO
   // ==========================================================
 
-  const esNumeroPermitido = valor => {
-    return /^\d*\.?\d*$/.test(valor)
-  }
+  
+const esNumeroPermitido = valor => {
+  return /^\d*\.?\d*$/.test(valor)
+}
 
   // ==========================================================
   // EDITAR CANTIDAD
@@ -312,6 +443,7 @@ function ConteoAuditor({
     index,
     valor
   ) => {
+
     if (!esNumeroPermitido(valor)) {
       return
     }
@@ -321,9 +453,13 @@ function ConteoAuditor({
     nuevas[index] = valor
 
     setCantidades(nuevas)
+
     setResultado(null)
+
     setCantidadTotal(null)
+
     setCantidadFinal(null)
+
     setError('')
 
     informarCambio(
@@ -335,6 +471,7 @@ function ConteoAuditor({
       nuevas,
       factor
     )
+
   }
 
   // ==========================================================
@@ -342,14 +479,19 @@ function ConteoAuditor({
   // ==========================================================
 
   const cambiarFactor = valor => {
+
     if (!esNumeroPermitido(valor)) {
       return
     }
 
     setFactor(valor)
+
     setResultado(null)
+
     setCantidadTotal(null)
+
     setCantidadFinal(null)
+
     setError('')
 
     informarCambio(
@@ -361,6 +503,7 @@ function ConteoAuditor({
       cantidades,
       valor
     )
+
   }
 
   // ==========================================================
@@ -368,15 +511,20 @@ function ConteoAuditor({
   // ==========================================================
 
   const agregarCantidad = () => {
+
     const nuevas = [
       ...cantidades,
       ''
     ]
 
     setCantidades(nuevas)
+
     setResultado(null)
+
     setCantidadTotal(null)
+
     setCantidadFinal(null)
+
     setError('')
 
     informarCambio(
@@ -388,6 +536,7 @@ function ConteoAuditor({
       nuevas,
       factor
     )
+
   }
 
   // ==========================================================
@@ -395,6 +544,7 @@ function ConteoAuditor({
   // ==========================================================
 
   const eliminarCantidad = index => {
+
     if (cantidades.length === 1) {
       return
     }
@@ -405,9 +555,13 @@ function ConteoAuditor({
       )
 
     setCantidades(nuevas)
+
     setResultado(null)
+
     setCantidadTotal(null)
+
     setCantidadFinal(null)
+
     setError('')
 
     informarCambio(
@@ -419,6 +573,7 @@ function ConteoAuditor({
       nuevas,
       factor
     )
+
   }
 
   // ==========================================================
@@ -426,6 +581,7 @@ function ConteoAuditor({
   // ==========================================================
 
   const validarConteoActual = async () => {
+
     setError('')
 
     const cantidadesNumericas =
@@ -441,11 +597,13 @@ function ConteoAuditor({
           valor === undefined
       )
     ) {
+
       setError(
         'Completa todas las cantidades antes de validar.'
       )
 
       return
+
     }
 
     if (
@@ -455,11 +613,13 @@ function ConteoAuditor({
           cantidad < 0
       )
     ) {
+
       setError(
         'Las cantidades deben ser números válidos.'
       )
 
       return
+
     }
 
     const factorNumerico =
@@ -469,14 +629,17 @@ function ConteoAuditor({
       Number.isNaN(factorNumerico) ||
       factorNumerico <= 0
     ) {
+
       setError(
         'El factor debe ser mayor que 0.'
       )
 
       return
+
     }
 
     try {
+
       setValidando(true)
 
       const respuesta =
@@ -499,30 +662,45 @@ function ConteoAuditor({
       )
 
       if (onRegistrado) {
+
         onRegistrado({
+
           detalleId: detalle.id,
+
           numeroConteo,
+
           cantidades:
             cantidadesNumericas,
+
           factor:
             factorNumerico,
+
           cantidadTotal:
             respuesta.cantidadTotal,
+
           cantidadFinal:
             respuesta.cantidadFinal,
+
           resultado:
             respuesta.resultado
+
         })
+
       }
 
-      guardarBorradorLocal(
+      await guardarBorradorLocal(
+
         cantidadesNumericas.map(
           cantidad =>
             String(cantidad)
         ),
+
         String(factorNumerico)
+
       )
+
     } catch (err) {
+
       console.error(err)
 
       setError(
@@ -531,11 +709,17 @@ function ConteoAuditor({
       )
 
       setResultado(null)
+
       setCantidadTotal(null)
+
       setCantidadFinal(null)
+
     } finally {
+
       setValidando(false)
+
     }
+
   }
 
   // ==========================================================
@@ -543,17 +727,27 @@ function ConteoAuditor({
   // ==========================================================
 
   if (loadingAnterior) {
+
     return (
+
       <div className="conteo-inline-loading">
+
         <span className="conteo-inline-loading-spinner">
+
           ⟳
+
         </span>
 
         <span>
+
           Cargando conteo anterior...
+
         </span>
+
       </div>
+
     )
+
   }
 
   // ==========================================================
@@ -561,79 +755,137 @@ function ConteoAuditor({
   // ==========================================================
 
   return (
+
     <div className="conteo-inline">
 
       {/* INDICADOR DE BORRADOR */}
+
       {borradorGuardado && (
+
         <div className="borrador-local-indicador">
+
           <span className="borrador-local-icon">
+
             ✓
+
           </span>
 
           <span>
+
             Guardado localmente
+
           </span>
+
         </div>
+
       )}
 
       {/* CANTIDADES */}
+
       <div className="conteo-inline-group">
 
         <div className="conteo-inline-label">
+
           Cantidades
+
         </div>
 
         <div className="conteo-inline-cantidades">
 
           {cantidades.map(
+
             (cantidad, index) => (
+
               <div
+
                 className="conteo-cantidad-item"
+
                 key={`cantidad-${index}`}
+
               >
+
                 <input
+
                   type="text"
+
                   inputMode="decimal"
+
                   value={cantidad}
+
                   onChange={e =>
+
                     cambiarCantidad(
+
                       index,
+
                       e.target.value
+
                     )
+
                   }
+
                   placeholder="Cantidad"
+
                   className="conteo-input"
+
                   disabled={validando}
+
                   aria-label={`Cantidad ${index + 1}`}
+
                 />
 
                 {cantidades.length > 1 && (
+
                   <button
+
                     type="button"
+
                     className="btn-eliminar-cantidad"
+
                     onClick={() =>
+
                       eliminarCantidad(index)
+
                     }
+
                     title="Eliminar cantidad"
+
                     aria-label={`Eliminar cantidad ${index + 1}`}
+
                     disabled={validando}
+
                   >
+
                     ×
+
                   </button>
+
                 )}
+
               </div>
+
             )
+
           )}
 
           <button
+
             type="button"
+
             className="btn-agregar-cantidad"
+
             onClick={agregarCantidad}
+
             disabled={validando}
+
             title="Agregar otra cantidad"
+
             aria-label="Agregar otra cantidad"
+
           >
+
             <span>+</span>
+
           </button>
 
         </div>
@@ -641,96 +893,217 @@ function ConteoAuditor({
       </div>
 
       {/* FACTOR */}
+
       <div className="conteo-inline-factor">
 
         <label htmlFor={`factor-${detalle.id}`}>
+
           Factor
+
         </label>
 
         <input
+
           id={`factor-${detalle.id}`}
+
           type="text"
+
           inputMode="decimal"
+
           value={factor}
+
           onChange={e =>
+
             cambiarFactor(
+
               e.target.value
+
             )
+
           }
+
           className="conteo-factor-input"
+
           disabled={validando}
+
         />
 
       </div>
 
       {/* VALIDAR */}
+
       <button
+
         type="button"
+
         className="btn-validar-sku"
+
         onClick={validarConteoActual}
+
         disabled={validando}
+
       >
+
         {validando ? (
+
           <>
+
             <span className="btn-validar-spinner" />
+
             Validando...
+
           </>
+
         ) : (
+
           <>
+
             <span className="btn-validar-icon">
+
               ✓
+
             </span>
+
             Validar
+
           </>
+
         )}
+
       </button>
 
-    {/* RESULTADO */}
+      {/* RESULTADO */}
+
       {resultado && (
+
         <span
+
           className={
+
             resultado === 'conforme'
+
               ? 'resultado-badge conforme'
+
               : 'resultado-badge diferencia'
+
           }
+
         >
+
           <span className="resultado-badge-dot" />
 
           {resultado === 'conforme'
+
             ? 'CONFORME'
+
             : 'DIFERENCIA'}
+
         </span>
+
       )}
 
       {/* CANTIDAD FINAL */}
+
       {resultado &&
+
         cantidadFinal !== null && (
-          <div className="conteo-final-info" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px', marginTop: '4px' }}>
-            <span className="conteo-final-label" style={{ fontSize: '11px', fontWeight: '750', color: '#64748b', textTransform: 'uppercase' }}>
+
+          <div
+
+            className="conteo-final-info"
+
+            style={{
+
+              display: 'flex',
+
+              alignItems: 'center',
+
+              justifyContent: 'space-between',
+
+              background: '#f1f5f9',
+
+              border: '1px solid #e2e8f0',
+
+              borderRadius: '6px',
+
+              padding: '8px 12px',
+
+              marginTop: '4px'
+
+            }}
+
+          >
+
+            <span
+
+              className="conteo-final-label"
+
+              style={{
+
+                fontSize: '11px',
+
+                fontWeight: '750',
+
+                color: '#64748b',
+
+                textTransform: 'uppercase'
+
+              }}
+
+            >
+
               Cantidad Final
+
             </span>
 
-            <strong style={{ fontSize: '15px', color: '#0f172a', fontWeight: '800' }}>
+            <strong
+
+              style={{
+
+                fontSize: '15px',
+
+                color: '#0f172a',
+
+                fontWeight: '800'
+
+              }}
+
+            >
+
               {cantidadFinal}
+
             </strong>
+
           </div>
+
         )}
 
       {/* ERROR */}
+
       {error && (
+
         <div className="conteo-inline-error">
+
           <span className="conteo-inline-error-icon">
+
             !
+
           </span>
 
           <span>
+
             {error}
+
           </span>
+
         </div>
+
       )}
 
     </div>
+
   )
+
 }
 
 export default ConteoAuditor

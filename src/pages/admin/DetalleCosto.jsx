@@ -313,12 +313,75 @@ export default function DetalleCosto({ costo, onVolver }) {
   }
 
   // =========================================================
+  // CLASIFICAR RESULTADO FINAL
+  //
+  // cantidad lógica = cantidad_fisica
+  // cantidad auditor = cantidad_final
+  //
+  // Ejemplo:
+  // 10 lógico / 15 auditor = +5 SOBRANTE
+  // 10 lógico /  7 auditor = -3 FALTANTE
+  // 10 lógico / 10 auditor = CONFORME
+  // =========================================================
+  function obtenerClasificacion(detalle) {
+    const ultimoConteo =
+      obtenerUltimoConteo(detalle.id);
+
+    if (!ultimoConteo) {
+      return {
+        tipo: "sin_conteo",
+        diferencia: null,
+        cantidadLogica: Number(
+          detalle.cantidad_fisica ?? 0
+        ),
+        cantidadAuditor: null,
+      };
+    }
+
+    const cantidadLogica = Number(
+      detalle.cantidad_fisica ?? 0
+    );
+
+    const cantidadAuditor = Number(
+      ultimoConteo.cantidad_final ?? 0
+    );
+
+    const diferencia =
+      cantidadAuditor - cantidadLogica;
+
+    if (diferencia === 0) {
+      return {
+        tipo: "conforme",
+        diferencia: 0,
+        cantidadLogica,
+        cantidadAuditor,
+      };
+    }
+
+    if (diferencia > 0) {
+      return {
+        tipo: "sobrante",
+        diferencia,
+        cantidadLogica,
+        cantidadAuditor,
+      };
+    }
+
+    return {
+      tipo: "faltante",
+      diferencia,
+      cantidadLogica,
+      cantidadAuditor,
+    };
+  }
+
+  // =========================================================
   // FILTRO
   // =========================================================
   const detallesFiltrados = useMemo(() => {
     return detalles.filter((detalle) => {
-      const ultimoConteo =
-        obtenerUltimoConteo(detalle.id);
+      const clasificacion =
+        obtenerClasificacion(detalle);
 
       if (filtro === "todos") {
         return true;
@@ -326,15 +389,22 @@ export default function DetalleCosto({ costo, onVolver }) {
 
       if (filtro === "conformes") {
         return (
-          ultimoConteo?.resultado ===
+          clasificacion.tipo ===
           "conforme"
         );
       }
 
-      if (filtro === "no_conformes") {
+      if (filtro === "sobrantes") {
         return (
-          ultimoConteo?.resultado ===
-          "diferencia"
+          clasificacion.tipo ===
+          "sobrante"
+        );
+      }
+
+      if (filtro === "faltantes") {
+        return (
+          clasificacion.tipo ===
+          "faltante"
         );
       }
 
@@ -348,31 +418,43 @@ export default function DetalleCosto({ costo, onVolver }) {
   const resumen = useMemo(() => {
     let sinConteo = 0;
     let conformes = 0;
-    let noConformes = 0;
+    let sobrantes = 0;
+    let faltantes = 0;
 
     detalles.forEach((detalle) => {
-      const ultimoConteo =
-        obtenerUltimoConteo(detalle.id);
+      const clasificacion =
+        obtenerClasificacion(detalle);
 
-      if (!ultimoConteo) {
+      if (
+        clasificacion.tipo ===
+        "sin_conteo"
+      ) {
         sinConteo++;
       } else if (
-        ultimoConteo.resultado ===
+        clasificacion.tipo ===
         "conforme"
       ) {
         conformes++;
       } else if (
-        ultimoConteo.resultado ===
-        "diferencia"
+        clasificacion.tipo ===
+        "sobrante"
       ) {
-        noConformes++;
+        sobrantes++;
+      } else if (
+        clasificacion.tipo ===
+        "faltante"
+      ) {
+        faltantes++;
       }
     });
 
     return {
       total: detalles.length,
       conformes,
-      noConformes,
+      sobrantes,
+      faltantes,
+      noConformes:
+        sobrantes + faltantes,
       sinConteo,
     };
   }, [detalles, conteos]);
@@ -455,9 +537,7 @@ export default function DetalleCosto({ costo, onVolver }) {
   if (cargando) {
     return (
       <div className="detalle-costo-container">
-
         <div className="detalle-cargando">
-
           <div className="spinner"></div>
 
           <div>
@@ -469,9 +549,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               Cargando detalles del costo...
             </p>
           </div>
-
         </div>
-
       </div>
     );
   }
@@ -482,7 +560,6 @@ export default function DetalleCosto({ costo, onVolver }) {
   if (error) {
     return (
       <div className="detalle-costo-container">
-
         <button
           className="btn-volver"
           onClick={onVolver}
@@ -493,7 +570,6 @@ export default function DetalleCosto({ costo, onVolver }) {
         </button>
 
         <div className="detalle-error">
-
           <div className="detalle-error-icon">
             !
           </div>
@@ -517,9 +593,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               Reintentar
             </button>
           </div>
-
         </div>
-
       </div>
     );
   }
@@ -531,7 +605,6 @@ export default function DetalleCosto({ costo, onVolver }) {
           CABECERA PRINCIPAL
       ====================================================== */}
       <header className="detalle-header">
-
         <div className="detalle-heading-content">
 
           <button
@@ -563,6 +636,7 @@ export default function DetalleCosto({ costo, onVolver }) {
                   )}
                 >
                   <span className="estado-dot" />
+
                   {textoEstado(
                     costo?.estado
                   )}
@@ -618,7 +692,6 @@ export default function DetalleCosto({ costo, onVolver }) {
           </div>
 
         </div>
-
       </header>
 
 
@@ -706,11 +779,31 @@ export default function DetalleCosto({ costo, onVolver }) {
               <div className="resumen-item-content">
 
                 <span className="resumen-label">
-                  No conformes
+                  Sobrantes
                 </span>
 
-                <strong className="texto-diferencia">
-                  {resumen.noConformes}
+                <strong className="texto-sobrante">
+                  {resumen.sobrantes}
+                </strong>
+
+              </div>
+
+            </div>
+
+            <div className="resumen-item resumen-diferencia">
+
+              <div className="resumen-icon">
+                !
+              </div>
+
+              <div className="resumen-item-content">
+
+                <span className="resumen-label">
+                  Faltantes
+                </span>
+
+                <strong className="texto-faltante">
+                  {resumen.faltantes}
                 </strong>
 
               </div>
@@ -855,6 +948,7 @@ export default function DetalleCosto({ costo, onVolver }) {
                         </span>
 
                         <div>
+
                           <strong>
                             Sin auditor
                           </strong>
@@ -862,6 +956,7 @@ export default function DetalleCosto({ costo, onVolver }) {
                           <span>
                             Esta etapa todavía no registra actividad.
                           </span>
+
                         </div>
 
                       </div>
@@ -948,6 +1043,7 @@ export default function DetalleCosto({ costo, onVolver }) {
 
           <div className="filtros-buttons">
 
+            {/* TODOS */}
             <button
               type="button"
               className={
@@ -970,9 +1066,10 @@ export default function DetalleCosto({ costo, onVolver }) {
               <span className="filtro-btn-count">
                 {resumen.total}
               </span>
-
             </button>
 
+
+            {/* CONFORMES */}
             <button
               type="button"
               className={
@@ -995,32 +1092,58 @@ export default function DetalleCosto({ costo, onVolver }) {
               <span className="filtro-btn-count">
                 {resumen.conformes}
               </span>
-
             </button>
 
+
+            {/* SOBRANTES */}
             <button
               type="button"
               className={
-                filtro === "no_conformes"
-                  ? "filtro-btn activo filtro-diferencia"
+                filtro === "sobrantes"
+                  ? "filtro-btn activo filtro-sobrante"
                   : "filtro-btn"
               }
               onClick={() =>
-                setFiltro("no_conformes")
+                setFiltro("sobrantes")
               }
             >
               <span className="filtro-btn-icon">
-                !
+                ↑
               </span>
 
               <span>
-                No conformes
+                Sobrantes
               </span>
 
               <span className="filtro-btn-count">
-                {resumen.noConformes}
+                {resumen.sobrantes}
+              </span>
+            </button>
+
+
+            {/* FALTANTES */}
+            <button
+              type="button"
+              className={
+                filtro === "faltantes"
+                  ? "filtro-btn activo filtro-faltante"
+                  : "filtro-btn"
+              }
+              onClick={() =>
+                setFiltro("faltantes")
+              }
+            >
+              <span className="filtro-btn-icon">
+                ↓
               </span>
 
+              <span>
+                Faltantes
+              </span>
+
+              <span className="filtro-btn-count">
+                {resumen.faltantes}
+              </span>
             </button>
 
           </div>
@@ -1187,9 +1310,6 @@ export default function DetalleCosto({ costo, onVolver }) {
                             textoResultado={
                               textoResultado
                             }
-                            claseResultado={
-                              claseResultado
-                            }
                           />
                         </td>
 
@@ -1206,9 +1326,6 @@ export default function DetalleCosto({ costo, onVolver }) {
                             }
                             textoResultado={
                               textoResultado
-                            }
-                            claseResultado={
-                              claseResultado
                             }
                           />
                         </td>
@@ -1227,31 +1344,84 @@ export default function DetalleCosto({ costo, onVolver }) {
                             textoResultado={
                               textoResultado
                             }
-                            claseResultado={
-                              claseResultado
-                            }
                           />
                         </td>
 
                         <td>
 
-                          {ultimoConteo ? (
+                          {ultimoConteo ? (() => {
 
-                            <span
-                              className={claseResultado(
-                                ultimoConteo.resultado
-                              )}
-                            >
+                            const clasificacion =
+                              obtenerClasificacion(
+                                detalle
+                              );
 
-                              <span className="resultado-dot" />
+                            if (
+                              clasificacion.tipo ===
+                              "conforme"
+                            ) {
+                              return (
+                                <div className="resultado-final detalle-resultado-conforme">
 
-                              {textoResultado(
-                                ultimoConteo.resultado
-                              )}
+                                  <span className="resultado-dot" />
 
-                            </span>
+                                  <strong>
+                                    CONFORME
+                                  </strong>
 
-                          ) : (
+                                  <small>
+                                    Sin diferencia
+                                  </small>
+
+                                </div>
+                              );
+                            }
+
+                            if (
+                              clasificacion.tipo ===
+                              "sobrante"
+                            ) {
+                              return (
+                                <div className="resultado-final detalle-resultado-sobrante">
+
+                                  <span className="resultado-dot" />
+
+                                  <strong>
+                                    SOBRANTE
+                                  </strong>
+
+                                  <small>
+                                    +
+                                    {
+                                      clasificacion.diferencia
+                                    }{" "}
+                                    unidades
+                                  </small>
+
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="resultado-final detalle-resultado-faltante">
+
+                                <span className="resultado-dot" />
+
+                                <strong>
+                                  FALTANTE
+                                </strong>
+
+                                <small>
+                                  {
+                                    clasificacion.diferencia
+                                  }{" "}
+                                  unidades
+                                </small>
+
+                              </div>
+                            );
+
+                          })() : (
 
                             <span className="resultado vacio">
                               SIN CONTEO
@@ -1424,9 +1594,6 @@ export default function DetalleCosto({ costo, onVolver }) {
               }
             >
 
-              {/* =============================================
-                  HEADER DEL MODAL
-              ============================================== */}
               <div className="modal-header">
 
                 <div>
@@ -1470,9 +1637,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               </div>
 
 
-              {/* =============================================
-                  AUDITOR
-              ============================================== */}
+              {/* AUDITOR */}
               <div className="modal-auditor">
 
                 <div className="modal-auditor-icon">
@@ -1495,9 +1660,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               </div>
 
 
-              {/* =============================================
-                  RESUMEN DEL CONTEO
-              ============================================== */}
+              {/* RESUMEN DEL CONTEO */}
               <div className="modal-resumen">
 
                 <div className="modal-resumen-item">
@@ -1566,9 +1729,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               </div>
 
 
-              {/* =============================================
-                  ITEMS
-              ============================================== */}
+              {/* ITEMS */}
               <div className="items-conteo">
 
                 <div className="items-conteo-heading">
@@ -1643,9 +1804,7 @@ export default function DetalleCosto({ costo, onVolver }) {
               </div>
 
 
-              {/* =============================================
-                  FOOTER
-              ============================================== */}
+              {/* FOOTER */}
               <div className="modal-footer">
 
                 <button

@@ -1,21 +1,19 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from 'react'
+
+import { useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
+
 import {
   estaOnline,
   escucharConexion,
-  contarPendientesOffline,
-} from "../../services/offlineStorage";
+  contarPendientesOffline
+} from '../../services/offlineStorage'
 
 import {
   obtenerCostosAuditor,
   obtenerDetallesAuditor,
   guardarConteoCosto,
-  adquirirBloqueoCosto,
+  iniciarCosto,
   renovarBloqueoCosto
 } from '../../services/costos'
 
@@ -26,17 +24,9 @@ import AuditorCostos from './AuditorCostos'
 // BORRADOR GENERAL
 // ==========================================================
 
-function obtenerClaveBorradorGeneral(
-  usuarioId,
-  costoId,
-  numeroConteo
-) {
+function obtenerClaveBorradorGeneral(usuarioId, costoId, numeroConteo) {
   return `validacion-costos-usuario-${usuarioId}-costo-${costoId}-conteo-${numeroConteo}`
 }
-
-// ==========================================================
-// SESIÓN ACTUAL
-// ==========================================================
 
 function obtenerClaveSesion(usuarioId) {
   return `validacion-costos-usuario-${usuarioId}-sesion`
@@ -46,27 +36,15 @@ function obtenerClaveSesion(usuarioId) {
 // GUARDAR BORRADOR GENERAL
 // ==========================================================
 
-function guardarBorradorGeneral(
-  usuarioId,
-  costoId,
-  numeroConteo,
-  datos
-) {
-  if (
-    !usuarioId ||
-    !costoId ||
-    !numeroConteo
-  ) {
-    return
-  }
+function guardarBorradorGeneral(usuarioId, costoId, numeroConteo, datos) {
+  if (!usuarioId || !costoId || !numeroConteo) return
 
   try {
-    const clave =
-      obtenerClaveBorradorGeneral(
-        usuarioId,
-        costoId,
-        numeroConteo
-      )
+    const clave = obtenerClaveBorradorGeneral(
+      usuarioId,
+      costoId,
+      numeroConteo
+    )
 
     localStorage.setItem(
       clave,
@@ -75,15 +53,11 @@ function guardarBorradorGeneral(
         costoId,
         numeroConteo,
         ...datos,
-        updatedAt:
-          new Date().toISOString()
+        updatedAt: new Date().toISOString()
       })
     )
   } catch (error) {
-    console.error(
-      'No se pudo guardar el borrador general:',
-      error
-    )
+    console.error('No se pudo guardar el borrador general:', error)
   }
 }
 
@@ -91,56 +65,33 @@ function guardarBorradorGeneral(
 // CARGAR BORRADOR GENERAL
 // ==========================================================
 
-function cargarBorradorGeneral(
-  usuarioId,
-  costoId,
-  numeroConteo
-) {
-  if (
-    !usuarioId ||
-    !costoId ||
-    !numeroConteo
-  ) {
-    return null
-  }
+function cargarBorradorGeneral(usuarioId, costoId, numeroConteo) {
+  if (!usuarioId || !costoId || !numeroConteo) return null
 
   try {
-    const clave =
-      obtenerClaveBorradorGeneral(
-        usuarioId,
-        costoId,
-        numeroConteo
-      )
+    const clave = obtenerClaveBorradorGeneral(
+      usuarioId,
+      costoId,
+      numeroConteo
+    )
 
-    const guardado =
-      localStorage.getItem(clave)
+    const guardado = localStorage.getItem(clave)
+    if (!guardado) return null
 
-    if (!guardado) {
-      return null
-    }
-
-    const borrador =
-      JSON.parse(guardado)
+    const borrador = JSON.parse(guardado)
 
     if (
       !borrador ||
-      String(borrador.usuarioId) !==
-        String(usuarioId) ||
-      Number(borrador.costoId) !==
-        Number(costoId) ||
-      Number(borrador.numeroConteo) !==
-        Number(numeroConteo)
+      String(borrador.usuarioId) !== String(usuarioId) ||
+      Number(borrador.costoId) !== Number(costoId) ||
+      Number(borrador.numeroConteo) !== Number(numeroConteo)
     ) {
       return null
     }
 
     return borrador
   } catch (error) {
-    console.error(
-      'No se pudo cargar el borrador general:',
-      error
-    )
-
+    console.error('No se pudo cargar el borrador general:', error)
     return null
   }
 }
@@ -149,32 +100,20 @@ function cargarBorradorGeneral(
 // GUARDAR SESIÓN
 // ==========================================================
 
-function guardarSesionActual(
-  usuarioId,
-  datos
-) {
-  if (!usuarioId) {
-    return
-  }
+function guardarSesionActual(usuarioId, datos) {
+  if (!usuarioId) return
 
   try {
-    const clave =
-      obtenerClaveSesion(usuarioId)
-
     localStorage.setItem(
-      clave,
+      obtenerClaveSesion(usuarioId),
       JSON.stringify({
         usuarioId,
         ...datos,
-        updatedAt:
-          new Date().toISOString()
+        updatedAt: new Date().toISOString()
       })
     )
   } catch (error) {
-    console.error(
-      'No se pudo guardar la sesión:',
-      error
-    )
+    console.error('No se pudo guardar la sesión:', error)
   }
 }
 
@@ -182,42 +121,25 @@ function guardarSesionActual(
 // CARGAR SESIÓN
 // ==========================================================
 
-function cargarSesionActual(
-  usuarioId
-) {
-  if (!usuarioId) {
-    return null
-  }
+function cargarSesionActual(usuarioId) {
+  if (!usuarioId) return null
 
   try {
-    const clave =
-      obtenerClaveSesion(usuarioId)
+    const guardado = localStorage.getItem(obtenerClaveSesion(usuarioId))
+    if (!guardado) return null
 
-    const guardado =
-      localStorage.getItem(clave)
-
-    if (!guardado) {
-      return null
-    }
-
-    const sesion =
-      JSON.parse(guardado)
+    const sesion = JSON.parse(guardado)
 
     if (
       !sesion ||
-      String(sesion.usuarioId) !==
-        String(usuarioId)
+      String(sesion.usuarioId) !== String(usuarioId)
     ) {
       return null
     }
 
     return sesion
   } catch (error) {
-    console.error(
-      'No se pudo cargar la sesión:',
-      error
-    )
-
+    console.error('No se pudo cargar la sesión:', error)
     return null
   }
 }
@@ -226,58 +148,32 @@ function cargarSesionActual(
 // LIMPIAR SESIÓN
 // ==========================================================
 
-function limpiarSesionActual(
-  usuarioId
-) {
-  if (!usuarioId) {
-    return
-  }
+function limpiarSesionActual(usuarioId) {
+  if (!usuarioId) return
 
   try {
-    localStorage.removeItem(
-      obtenerClaveSesion(usuarioId)
-    )
+    localStorage.removeItem(obtenerClaveSesion(usuarioId))
   } catch (error) {
-    console.error(
-      'No se pudo limpiar la sesión:',
-      error
-    )
+    console.error('No se pudo limpiar la sesión:', error)
   }
 }
 
 // ==========================================================
-// LIMPIAR BORRADORES DE UN COSTO
+// LIMPIAR BORRADORES DE UN CONTEO
 // ==========================================================
 
-function limpiarBorradoresCosto(
-  usuarioId,
-  costoId,
-  numeroConteo
-) {
-  if (
-    !usuarioId ||
-    !costoId ||
-    !numeroConteo
-  ) {
-    return
-  }
+function limpiarBorradoresCosto(usuarioId, costoId, numeroConteo) {
+  if (!usuarioId || !costoId || !numeroConteo) return
 
   try {
     const prefijo =
       `validacion-costos-usuario-${usuarioId}-costo-${costoId}-detalle-`
 
-    const sufijo =
-      `-conteo-${numeroConteo}`
-
+    const sufijo = `-conteo-${numeroConteo}`
     const claves = []
 
-    for (
-      let i = 0;
-      i < localStorage.length;
-      i++
-    ) {
-      const clave =
-        localStorage.key(i)
+    for (let i = 0; i < localStorage.length; i++) {
+      const clave = localStorage.key(i)
 
       if (
         clave &&
@@ -288,10 +184,7 @@ function limpiarBorradoresCosto(
       }
     }
 
-    claves.forEach(
-      clave =>
-        localStorage.removeItem(clave)
-    )
+    claves.forEach(clave => localStorage.removeItem(clave))
 
     localStorage.removeItem(
       obtenerClaveBorradorGeneral(
@@ -301,10 +194,7 @@ function limpiarBorradoresCosto(
       )
     )
   } catch (error) {
-    console.error(
-      'No se pudieron limpiar los borradores:',
-      error
-    )
+    console.error('No se pudieron limpiar los borradores:', error)
   }
 }
 
@@ -312,16 +202,11 @@ function limpiarBorradoresCosto(
 // INDICADOR DE CONEXIÓN
 // ==========================================================
 
-function IndicadorConexion({
-  conexionOnline,
-  pendientesOffline
-}) {
+function IndicadorConexion({ conexionOnline, pendientesOffline }) {
   return (
     <div
       className={`conexion-indicador ${
-        conexionOnline
-          ? 'conexion-online'
-          : 'conexion-offline'
+        conexionOnline ? 'conexion-online' : 'conexion-offline'
       }`}
       title={
         conexionOnline
@@ -336,22 +221,16 @@ function IndicadorConexion({
 
       <div className="conexion-indicador-info">
         <strong>
-          {conexionOnline
-            ? 'Conectado'
-            : 'Sin conexión'}
+          {conexionOnline ? 'Conectado' : 'Sin conexión'}
         </strong>
 
         <span>
           {conexionOnline
             ? pendientesOffline > 0
               ? `${pendientesOffline} cambio${
-                  pendientesOffline === 1
-                    ? ''
-                    : 's'
+                  pendientesOffline === 1 ? '' : 's'
                 } pendiente${
-                  pendientesOffline === 1
-                    ? ''
-                    : 's'
+                  pendientesOffline === 1 ? '' : 's'
                 }`
               : 'Sincronizado'
             : 'Los avances se guardan localmente'}
@@ -362,119 +241,264 @@ function IndicadorConexion({
 }
 
 // ==========================================================
-// COMPONENTE
+// VENTANA DE RESULTADO DEL CONTEO
+// ==========================================================
+
+function ModalResultadoConteo({ resultado, onCerrar }) {
+  if (!resultado) return null
+
+  const esConforme = resultado.resultado === 'conforme'
+  const esNoConforme = resultado.resultado === 'no_conforme'
+
+  const color = esConforme
+    ? '#15803d'
+    : esNoConforme
+      ? '#b91c1c'
+      : '#475569'
+
+  const fondo = esConforme
+    ? '#dcfce7'
+    : esNoConforme
+      ? '#fee2e2'
+      : '#f1f5f9'
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="resultado-guardado-titulo"
+      onClick={evento => {
+        if (evento.target === evento.currentTarget) {
+          onCerrar()
+        }
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: 'rgba(15, 23, 42, 0.72)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        overflowY: 'auto'
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '460px',
+          maxHeight: 'calc(100dvh - 32px)',
+          overflowY: 'auto',
+          background: '#ffffff',
+          borderRadius: '20px',
+          padding: 'clamp(22px, 5vw, 32px)',
+          textAlign: 'center',
+          boxShadow: '0 24px 70px rgba(0, 0, 0, 0.3)',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            width: '70px',
+            height: '70px',
+            borderRadius: '50%',
+            margin: '0 auto 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '36px',
+            fontWeight: 800,
+            color,
+            background: fondo
+          }}
+        >
+          {esConforme ? '✓' : esNoConforme ? '!' : '?'}
+        </div>
+
+        <h2
+          id="resultado-guardado-titulo"
+          style={{
+            margin: '0 0 10px',
+            fontSize: 'clamp(21px, 5vw, 26px)',
+            lineHeight: 1.3,
+            color: '#0f172a'
+          }}
+        >
+          Conteo {resultado.conteo} registrado
+        </h2>
+
+        <p
+          style={{
+            margin: '0 0 12px',
+            fontSize: 'clamp(20px, 5vw, 24px)',
+            fontWeight: 900,
+            letterSpacing: '0.4px',
+            color
+          }}
+        >
+          {resultado.resultadoTexto}
+        </p>
+
+        {!esConforme && !esNoConforme && (
+          <p
+            style={{
+              margin: '0 0 18px',
+              color: '#64748b',
+              fontSize: '14px',
+              lineHeight: 1.5
+            }}
+          >
+            El conteo se guardó, pero la respuesta no incluyó un
+            resultado reconocido. Consulta el detalle con el administrador.
+          </p>
+        )}
+
+        <div
+          style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '16px',
+            margin: '20px 0',
+            textAlign: 'left'
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              paddingBottom: '12px',
+              borderBottom: '1px solid #e2e8f0'
+            }}
+          >
+            <span style={{ color: '#475569', fontSize: '14px' }}>
+              Líneas conformes
+            </span>
+
+            <strong
+              style={{
+                color: '#15803d',
+                fontSize: '20px',
+                fontVariantNumeric: 'tabular-nums'
+              }}
+            >
+              {resultado.lineasConformes ?? '—'}
+            </strong>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              paddingTop: '12px'
+            }}
+          >
+            <span style={{ color: '#475569', fontSize: '14px' }}>
+              Líneas con diferencias
+            </span>
+
+            <strong
+              style={{
+                color: '#b91c1c',
+                fontSize: '20px',
+                fontVariantNumeric: 'tabular-nums'
+              }}
+            >
+              {resultado.lineasDiferencia ?? '—'}
+            </strong>
+          </div>
+        </div>
+
+        {resultado.advertencia && (
+          <div
+            role="alert"
+            style={{
+              padding: '12px',
+              borderRadius: '10px',
+              background: '#fffbeb',
+              border: '1px solid #fcd34d',
+              color: '#92400e',
+              fontSize: '13px',
+              lineHeight: 1.5,
+              textAlign: 'left',
+              marginBottom: '18px'
+            }}
+          >
+            {resultado.advertencia}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={onCerrar}
+          autoFocus
+          style={{
+            width: '100%',
+            border: 'none',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            background: '#15803d',
+            color: '#ffffff',
+            fontSize: '15px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            minHeight: '48px'
+          }}
+        >
+          Entendido, continuar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ==========================================================
+// COMPONENTE PRINCIPAL
 // ==========================================================
 
 function AuditorDashboard() {
-  const [
-    usuarioId,
-    setUsuarioId
-  ] = useState(null)
+  const [usuarioId, setUsuarioId] = useState(null)
+  const [costos, setCostos] = useState([])
+  const [costoSeleccionado, setCostoSeleccionado] = useState(null)
+  const [detalles, setDetalles] = useState([])
+  const [resultados, setResultados] = useState({})
+  const [borradores, setBorradores] = useState({})
+  const [noManifestados, setNoManifestados] = useState([])
 
-  const [
-    costos,
-    setCostos
-  ] = useState([])
-
-  const [
-    costoSeleccionado,
-    setCostoSeleccionado
-  ] = useState(null)
-
-  const [
-    detalles,
-    setDetalles
-  ] = useState([])
-
-  const [
-    resultados,
-    setResultados
-  ] = useState({})
-
-  const [
-    borradores,
-    setBorradores
-  ] = useState({})
-
-  const [
-    noManifestados,
-    setNoManifestados
-  ] = useState([])
-
-  const [
-    nuevoNoManifestado,
-    setNuevoNoManifestado
-  ] = useState({
+  const [nuevoNoManifestado, setNuevoNoManifestado] = useState({
     sku: '',
     cantidad: '',
     observacion: ''
   })
 
-  const [
-    borradorGuardado,
-    setBorradorGuardado
-  ] = useState(false)
+  const [borradorGuardado, setBorradorGuardado] = useState(false)
+  const [filtroResultado, setFiltroResultado] = useState('todos')
+  const [busqueda, setBusqueda] = useState('')
+  const [versionLimpieza, setVersionLimpieza] = useState(0)
+  const [restauracionRealizada, setRestauracionRealizada] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadingDetalles, setLoadingDetalles] = useState(false)
+  const [guardandoCosto, setGuardandoCosto] = useState(false)
+  const [error, setError] = useState('')
+  const [mensaje, setMensaje] = useState('')
+  const [resultadoGuardado, setResultadoGuardado] = useState(null)
 
-  const [
-    filtroResultado,
-    setFiltroResultado
-  ] = useState('todos')
-
-  const [
-    busqueda,
-    setBusqueda
-  ] = useState('')
-
-  const [
-    versionLimpieza,
-    setVersionLimpieza
-  ] = useState(0)
-
-  const [
-    restauracionRealizada,
-    setRestauracionRealizada
-  ] = useState(false)
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true)
-
-  const [
-    loadingDetalles,
-    setLoadingDetalles
-  ] = useState(false)
-
-  const [
-    guardandoCosto,
-    setGuardandoCosto
-  ] = useState(false)
-
-  const [
-    error,
-    setError
-  ] = useState('')
-
-  const [
-    mensaje,
-    setMensaje
-  ] = useState('')
+  const [conexionOnline, setConexionOnline] = useState(estaOnline())
+  const [pendientesOffline, setPendientesOffline] = useState(0)
 
   // ==========================================================
-  // ESTADO DE CONEXIÓN
+  // CERRAR VENTANA DEL RESULTADO
   // ==========================================================
 
-  const [
-    conexionOnline,
-    setConexionOnline
-  ] = useState(
-    estaOnline()
-  )
-
-  const [
-    pendientesOffline,
-    setPendientesOffline
-  ] = useState(0)
+  function cerrarResultadoGuardado() {
+    setResultadoGuardado(null)
+  }
 
   // ==========================================================
   // CERRAR SESIÓN
@@ -482,20 +506,11 @@ function AuditorDashboard() {
 
   async function cerrarSesion() {
     try {
-      limpiarSesionActual(
-        usuarioId
-      )
-
+      limpiarSesionActual(usuarioId)
       await supabase.auth.signOut()
     } catch (error) {
-      console.error(
-        'Error cerrando sesión:',
-        error
-      )
-
-      setError(
-        'No se pudo cerrar la sesión.'
-      )
+      console.error('Error cerrando sesión:', error)
+      setError('No se pudo cerrar la sesión.')
     }
   }
 
@@ -508,60 +523,38 @@ function AuditorDashboard() {
       const {
         data,
         error: errorUsuario
-      } =
-        await supabase.auth.getUser()
+      } = await supabase.auth.getUser()
 
       if (errorUsuario) {
-        console.error(
-          errorUsuario
-        )
-
-        setError(
-          'No se pudo obtener el usuario.'
-        )
-
+        console.error(errorUsuario)
+        setError('No se pudo obtener el usuario.')
         setLoading(false)
-
         return
       }
 
       if (!data?.user?.id) {
-        setError(
-          'No se encontró una sesión activa.'
-        )
-
+        setError('No se encontró una sesión activa.')
         setLoading(false)
-
         return
       }
 
-      setUsuarioId(
-        data.user.id
-      )
+      setUsuarioId(data.user.id)
     }
 
     obtenerUsuario()
   }, [])
 
   // ==========================================================
-  // DETECTAR CONEXIÓN A INTERNET
+  // DETECTAR CONEXIÓN
   // ==========================================================
 
   useEffect(() => {
-    const limpiarConexion =
-      escucharConexion({
-        alConectar: () => {
-          setConexionOnline(true)
-        },
+    const limpiarConexion = escucharConexion({
+      alConectar: () => setConexionOnline(true),
+      alDesconectar: () => setConexionOnline(false)
+    })
 
-        alDesconectar: () => {
-          setConexionOnline(false)
-        }
-      })
-
-    return () => {
-      limpiarConexion()
-    }
+    return () => limpiarConexion()
   }, [])
 
   // ==========================================================
@@ -570,39 +563,25 @@ function AuditorDashboard() {
 
   useEffect(() => {
     async function cargarPendientesOffline() {
-      if (!usuarioId) {
-        return
-      }
+      if (!usuarioId) return
 
       try {
-        const cantidad =
-          await contarPendientesOffline({
-            usuarioId
-          })
-
+        const cantidad = await contarPendientesOffline({ usuarioId })
         setPendientesOffline(cantidad)
       } catch (error) {
-        console.error(
-          'Error obteniendo pendientes offline:',
-          error
-        )
+        console.error('Error obteniendo pendientes offline:', error)
       }
     }
 
     cargarPendientesOffline()
-  }, [
-    usuarioId
-  ])
+  }, [usuarioId])
 
   // ==========================================================
   // CARGAR COSTOS
   // ==========================================================
 
   useEffect(() => {
-    if (!usuarioId) {
-      return
-    }
-
+    if (!usuarioId) return
     cargarCostos()
   }, [usuarioId])
 
@@ -611,19 +590,11 @@ function AuditorDashboard() {
       setLoading(true)
       setError('')
 
-      const datos =
-        await obtenerCostosAuditor()
-
-      setCostos(
-        datos || []
-      )
+      const datos = await obtenerCostosAuditor()
+      setCostos(datos || [])
     } catch (err) {
       console.error(err)
-
-      setError(
-        err?.message ||
-        'No se pudieron cargar los costos.'
-      )
+      setError(err?.message || 'No se pudieron cargar los costos.')
     } finally {
       setLoading(false)
     }
@@ -633,169 +604,75 @@ function AuditorDashboard() {
   // SELECCIONAR COSTO
   // ==========================================================
 
-  async function seleccionarCosto(
-    costo,
-    opciones = {}
-  ) {
+  async function seleccionarCosto(costo, opciones = {}) {
     try {
       setError('')
       setMensaje('')
+      setResultadoGuardado(null)
 
-      // --------------------------------------------------------
-      // VALIDAR ESTADO
-      // --------------------------------------------------------
-
-      if (
-        costo.estado ===
-        'terminado'
-      ) {
-        throw new Error(
-          'Este costo ya está terminado.'
-        )
+      if (costo.estado === 'terminado') {
+        throw new Error('Este costo ya está terminado.')
       }
 
-      // --------------------------------------------------------
-      // VALIDAR CONTEO
-      // --------------------------------------------------------
+      const numeroConteo = Number(costo.conteo_habilitado)
 
-      const numeroConteo =
-        Number(
-          costo.conteo_habilitado
-        )
-
-      if (
-        numeroConteo < 1 ||
-        numeroConteo > 3
-      ) {
-        throw new Error(
-          'El costo no tiene un conteo habilitado.'
-        )
+      if (numeroConteo < 1 || numeroConteo > 3) {
+        throw new Error('El costo no tiene un conteo habilitado.')
       }
-
-      // --------------------------------------------------------
-      // ADQUIRIR BLOQUEO
-      // --------------------------------------------------------
 
       try {
-        await adquirirBloqueoCosto(
-          costo.id
-        )
-      } catch (errorBloqueo) {
-        console.error(
-          'Error adquiriendo bloqueo:',
-          errorBloqueo
-        )
-
+        await iniciarCosto(costo.id)
+      } catch (errorInicio) {
+        console.error('Error iniciando el costo:', errorInicio)
         throw new Error(
-          'Este costo está siendo trabajado por otro auditor.'
+          errorInicio?.message || 'No se pudo iniciar el costo.'
         )
       }
 
-      // --------------------------------------------------------
-      // PREPARAR INTERFAZ
-      // --------------------------------------------------------
-
-      setCostoSeleccionado(
-        costo
-      )
-
+      setCostoSeleccionado(costo)
       setDetalles([])
-
       setResultados({})
-
       setBorradores({})
-
       setNoManifestados([])
-
       setBorradorGuardado(false)
-
-      setFiltroResultado(
-        opciones.filtroResultado ||
-        'todos'
-      )
-
-      setBusqueda(
-        opciones.busqueda ||
-        ''
-      )
-
+      setFiltroResultado(opciones.filtroResultado || 'todos')
+      setBusqueda(opciones.busqueda || '')
       setLoadingDetalles(true)
 
-      // --------------------------------------------------------
-      // CARGAR DETALLES
-      // --------------------------------------------------------
-
-      const datos =
-        await obtenerDetallesAuditor(
-          costo.id,
-          numeroConteo
-        )
-
-      setDetalles(
-        datos || []
+      const datos = await obtenerDetallesAuditor(
+        costo.id,
+        numeroConteo
       )
 
-      // --------------------------------------------------------
-      // RESTAURAR BORRADOR GENERAL
-      // --------------------------------------------------------
+      setDetalles(datos || [])
 
-      const borrador =
-        cargarBorradorGeneral(
-          usuarioId,
-          costo.id,
-          numeroConteo
-        )
+      const borrador = cargarBorradorGeneral(
+        usuarioId,
+        costo.id,
+        numeroConteo
+      )
 
       if (borrador) {
         setNoManifestados(
-          Array.isArray(
-            borrador.noManifestados
-          )
+          Array.isArray(borrador.noManifestados)
             ? borrador.noManifestados
             : []
         )
-
-        setBorradorGuardado(
-          true
-        )
+        setBorradorGuardado(true)
       }
 
-      // --------------------------------------------------------
-      // GUARDAR SESIÓN
-      // --------------------------------------------------------
-
-      guardarSesionActual(
-        usuarioId,
-        {
-          costoId:
-            costo.id,
-
-          numeroConteo,
-
-          busqueda:
-            opciones.busqueda ||
-            '',
-
-          filtroResultado:
-            opciones.filtroResultado ||
-            'todos'
-        }
-      )
+      guardarSesionActual(usuarioId, {
+        costoId: costo.id,
+        numeroConteo,
+        busqueda: opciones.busqueda || '',
+        filtroResultado: opciones.filtroResultado || 'todos'
+      })
     } catch (err) {
       console.error(err)
-
-      setError(
-        err?.message ||
-        'No se pudo abrir el costo.'
-      )
-
-      setCostoSeleccionado(
-        null
-      )
+      setError(err?.message || 'No se pudo abrir el costo.')
+      setCostoSeleccionado(null)
     } finally {
-      setLoadingDetalles(
-        false
-      )
+      setLoadingDetalles(false)
     }
   }
 
@@ -804,21 +681,13 @@ function AuditorDashboard() {
   // ==========================================================
 
   useEffect(() => {
-    if (
-      !usuarioId ||
-      !costoSeleccionado
-    ) {
-      return
-    }
+    if (!usuarioId || !costoSeleccionado) return
 
-    const costoId =
-      costoSeleccionado.id
+    const costoId = costoSeleccionado.id
 
     async function renovar() {
       try {
-        await renovarBloqueoCosto(
-          costoId
-        )
+        await renovarBloqueoCosto(costoId)
       } catch (errorRenovacion) {
         console.error(
           'No se pudo renovar el bloqueo:',
@@ -829,41 +698,21 @@ function AuditorDashboard() {
           'Se perdió el acceso a este costo. Otro usuario podría estar trabajando en él.'
         )
 
-        setCostoSeleccionado(
-          null
-        )
-
+        setCostoSeleccionado(null)
         setDetalles([])
-
         setResultados({})
-
         setBorradores({})
-
         setNoManifestados([])
-
-        limpiarSesionActual(
-          usuarioId
-        )
+        limpiarSesionActual(usuarioId)
       }
     }
 
     renovar()
 
-    const intervalo =
-      setInterval(
-        renovar,
-        60 * 1000
-      )
+    const intervalo = setInterval(renovar, 60 * 1000)
 
-    return () => {
-      clearInterval(
-        intervalo
-      )
-    }
-  }, [
-    usuarioId,
-    costoSeleccionado
-  ])
+    return () => clearInterval(intervalo)
+  }, [usuarioId, costoSeleccionado])
 
   // ==========================================================
   // RESTAURAR SESIÓN
@@ -878,195 +727,95 @@ function AuditorDashboard() {
       return
     }
 
-    const sesion =
-      cargarSesionActual(
-        usuarioId
-      )
+    const sesion = cargarSesionActual(usuarioId)
 
     if (!sesion?.costoId) {
-      setRestauracionRealizada(
-        true
-      )
-
+      setRestauracionRealizada(true)
       return
     }
 
-    const costo =
-      costos.find(
-        item =>
-          Number(item.id) ===
-          Number(sesion.costoId)
-      )
-
-    if (
-      !costo ||
-      costo.estado ===
-        'terminado'
-    ) {
-      limpiarSesionActual(
-        usuarioId
-      )
-
-      setRestauracionRealizada(
-        true
-      )
-
-      return
-    }
-
-    const numeroConteoActual =
-      Number(
-        costo.conteo_habilitado
-      )
-
-    const numeroConteoSesion =
-      Number(
-        sesion.numeroConteo
-      )
-
-    if (
-      numeroConteoActual !==
-      numeroConteoSesion
-    ) {
-      limpiarSesionActual(
-        usuarioId
-      )
-
-      setRestauracionRealizada(
-        true
-      )
-
-      return
-    }
-
-    setRestauracionRealizada(
-      true
+    const costo = costos.find(
+      item => Number(item.id) === Number(sesion.costoId)
     )
 
-    seleccionarCosto(
-      costo,
-      {
-        busqueda:
-          sesion.busqueda ||
-          '',
+    if (!costo || costo.estado === 'terminado') {
+      limpiarSesionActual(usuarioId)
+      setRestauracionRealizada(true)
+      return
+    }
 
-        filtroResultado:
-          sesion.filtroResultado ||
-          'todos'
-      }
-    )
-  }, [
-    usuarioId,
-    costos,
-    restauracionRealizada
-  ])
+    const numeroConteoActual = Number(costo.conteo_habilitado)
+    const numeroConteoSesion = Number(sesion.numeroConteo)
+
+    if (numeroConteoActual !== numeroConteoSesion) {
+      limpiarSesionActual(usuarioId)
+      setRestauracionRealizada(true)
+      return
+    }
+
+    setRestauracionRealizada(true)
+
+    seleccionarCosto(costo, {
+      busqueda: sesion.busqueda || '',
+      filtroResultado: sesion.filtroResultado || 'todos'
+    })
+  }, [usuarioId, costos, restauracionRealizada])
 
   // ==========================================================
   // VOLVER A COSTOS
   // ==========================================================
 
   function volverCostos() {
-    setCostoSeleccionado(
-      null
-    )
-
+    setCostoSeleccionado(null)
     setDetalles([])
-
     setResultados({})
-
     setBorradores({})
-
     setNoManifestados([])
-
     setBusqueda('')
-
-    setFiltroResultado(
-      'todos'
-    )
-
-    limpiarSesionActual(
-      usuarioId
-    )
+    setFiltroResultado('todos')
+    limpiarSesionActual(usuarioId)
   }
 
   // ==========================================================
-  // MANEJAR RESULTADO
+  // MANEJAR RESULTADO INDIVIDUAL
   // ==========================================================
 
-  function manejarResultado(
-    detalleId,
-    resultado
-  ) {
-    setResultados(
-      anterior => ({
-        ...anterior,
-        [detalleId]:
-          resultado
-      })
-    )
+  function manejarResultado(detalleId, resultado) {
+    setResultados(anterior => ({
+      ...anterior,
+      [detalleId]: resultado
+    }))
 
-    setBorradorGuardado(
-      true
-    )
+    setBorradorGuardado(true)
   }
 
   // ==========================================================
-  // MANEJAR CAMBIO
+  // MANEJAR CAMBIO EN CONTEO
   // ==========================================================
 
-  function manejarCambio(
-    datos
-  ) {
-    if (!datos?.detalleId) {
-      return
-    }
+  function manejarCambio(datos) {
+    if (!datos?.detalleId) return
 
-    setBorradores(
-      anterior => ({
-        ...anterior,
-        [datos.detalleId]:
-          datos
-      })
-    )
+    setBorradores(anterior => ({
+      ...anterior,
+      [datos.detalleId]: datos
+    }))
 
-    setResultados(
-      anterior => {
-        const nuevo =
-          { ...anterior }
+    setResultados(anterior => {
+      const nuevo = { ...anterior }
+      delete nuevo[datos.detalleId]
+      return nuevo
+    })
 
-        delete nuevo[
-          datos.detalleId
-        ]
-
-        return nuevo
-      }
-    )
-
-    setBorradorGuardado(
-      true
-    )
-
-    // --------------------------------------------------------
-    // GUARDAR POSICIÓN ACTUAL
-    // --------------------------------------------------------
+    setBorradorGuardado(true)
 
     if (costoSeleccionado) {
-      guardarSesionActual(
-        usuarioId,
-        {
-          costoId:
-            costoSeleccionado.id,
-
-          numeroConteo:
-            Number(
-              costoSeleccionado.conteo_habilitado
-            ),
-
-          busqueda,
-
-          filtroResultado
-        }
-      )
+      guardarSesionActual(usuarioId, {
+        costoId: costoSeleccionado.id,
+        numeroConteo: Number(costoSeleccionado.conteo_habilitado),
+        busqueda,
+        filtroResultado
+      })
     }
   }
 
@@ -1074,33 +823,16 @@ function AuditorDashboard() {
   // GUARDAR SESIÓN CON FILTROS
   // ==========================================================
 
-  function guardarSesionConFiltros(
-    nuevoValor
-  ) {
-    if (!costoSeleccionado) {
-      return
-    }
+  function guardarSesionConFiltros(nuevoValor) {
+    if (!costoSeleccionado) return
 
-    guardarSesionActual(
-      usuarioId,
-      {
-        costoId:
-          costoSeleccionado.id,
-
-        numeroConteo:
-          Number(
-            costoSeleccionado.conteo_habilitado
-          ),
-
-        busqueda:
-          nuevoValor.busqueda ??
-          busqueda,
-
-        filtroResultado:
-          nuevoValor.filtroResultado ??
-          filtroResultado
-      }
-    )
+    guardarSesionActual(usuarioId, {
+      costoId: costoSeleccionado.id,
+      numeroConteo: Number(costoSeleccionado.conteo_habilitado),
+      busqueda: nuevoValor.busqueda ?? busqueda,
+      filtroResultado:
+        nuevoValor.filtroResultado ?? filtroResultado
+    })
   }
 
   // ==========================================================
@@ -1108,70 +840,38 @@ function AuditorDashboard() {
   // ==========================================================
 
   function agregarNoManifestado() {
-    const sku =
-      nuevoNoManifestado.sku
-        .trim()
-
-    const cantidad =
-      Number(
-        nuevoNoManifestado.cantidad
-      )
-
-    const observacion =
-      nuevoNoManifestado.observacion
-        .trim()
+    const sku = nuevoNoManifestado.sku.trim()
+    const cantidad = Number(nuevoNoManifestado.cantidad)
+    const observacion = nuevoNoManifestado.observacion.trim()
 
     if (!sku) {
-      setError(
-        'Ingresa el SKU del producto no manifestado.'
-      )
-
+      setError('Ingresa el SKU del producto no manifestado.')
       return
     }
 
-    if (
-      Number.isNaN(cantidad) ||
-      cantidad <= 0
-    ) {
-      setError(
-        'La cantidad del no manifestado debe ser mayor que 0.'
-      )
-
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      setError('La cantidad del no manifestado debe ser mayor que 0.')
       return
     }
 
-    const existe =
-      noManifestados.some(
-        item =>
-          String(item.sku)
-            .toLowerCase() ===
-          sku.toLowerCase()
-      )
+    const existe = noManifestados.some(
+      item => String(item.sku).toLowerCase() === sku.toLowerCase()
+    )
 
     if (existe) {
-      setError(
-        'Ese SKU ya fue agregado como no manifestado.'
-      )
-
+      setError('Ese SKU ya fue agregado como no manifestado.')
       return
     }
 
-    const nuevo = {
-      id:
-        `local-${Date.now()}`,
-      sku,
-      cantidad,
-      observacion
-    }
-
-    const lista = [
+    setNoManifestados([
       ...noManifestados,
-      nuevo
-    ]
-
-    setNoManifestados(
-      lista
-    )
+      {
+        id: `local-${Date.now()}`,
+        sku,
+        cantidad,
+        observacion
+      }
+    ])
 
     setNuevoNoManifestado({
       sku: '',
@@ -1180,83 +880,41 @@ function AuditorDashboard() {
     })
 
     setError('')
-
-    setBorradorGuardado(
-      true
-    )
+    setBorradorGuardado(true)
   }
 
   // ==========================================================
   // ELIMINAR NO MANIFESTADO
   // ==========================================================
 
-  function eliminarNoManifestado(
-    id
-  ) {
-    const lista =
-      noManifestados.filter(
-        item =>
-          item.id !== id
-      )
-
+  function eliminarNoManifestado(id) {
     setNoManifestados(
-      lista
+      noManifestados.filter(item => item.id !== id)
     )
-
-    setBorradorGuardado(
-      true
-    )
+    setBorradorGuardado(true)
   }
 
   // ==========================================================
   // EDITAR NO MANIFESTADO
   // ==========================================================
 
-  function editarNoManifestado(
-    id,
-    campo,
-    valor
-  ) {
-    let nuevoValor =
-      valor
+  function editarNoManifestado(id, campo, valor) {
+    let nuevoValor = valor
 
-    if (
-      campo ===
-      'cantidad'
-    ) {
-      if (
-        !/^\d*\.?\d*$/.test(
-          valor
-        )
-      ) {
-        return
-      }
-
-      nuevoValor =
-        valor === ''
-          ? ''
-          : Number(valor)
+    if (campo === 'cantidad') {
+      if (!/^\d*\.?\d*$/.test(valor)) return
+      nuevoValor = valor === '' ? '' : valor
     }
 
-    const lista =
-      noManifestados.map(
-        item =>
-          item.id === id
-            ? {
-                ...item,
-                [campo]:
-                  nuevoValor
-              }
-            : item
-      )
-
     setNoManifestados(
-      lista
+      noManifestados.map(item =>
+        item.id === id
+          ? { ...item, [campo]: nuevoValor }
+          : item
+      )
     )
 
-    setBorradorGuardado(
-      true
-    )
+    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -1264,35 +922,18 @@ function AuditorDashboard() {
   // ==========================================================
 
   function validarNoManifestados() {
-    for (
-      const item
-      of noManifestados
-    ) {
-      if (
-        !String(
-          item.sku || ''
-        ).trim()
-      ) {
-        setError(
-          'Existe un no manifestado sin SKU.'
-        )
-
+    for (const item of noManifestados) {
+      if (!String(item.sku || '').trim()) {
+        setError('Existe un no manifestado sin SKU.')
         return false
       }
 
-      const cantidad =
-        Number(
-          item.cantidad
-        )
+      const cantidad = Number(item.cantidad)
 
-      if (
-        Number.isNaN(cantidad) ||
-        cantidad <= 0
-      ) {
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
         setError(
           'Todos los no manifestados deben tener una cantidad mayor que 0.'
         )
-
         return false
       }
     }
@@ -1305,27 +946,20 @@ function AuditorDashboard() {
   // ==========================================================
 
   function guardarBorradorActual() {
-    if (!costoSeleccionado) {
-      return
-    }
+    if (!costoSeleccionado) return
 
-    const numeroConteo =
-      Number(
-        costoSeleccionado.conteo_habilitado
-      )
+    const numeroConteo = Number(
+      costoSeleccionado.conteo_habilitado
+    )
 
     guardarBorradorGeneral(
       usuarioId,
       costoSeleccionado.id,
       numeroConteo,
-      {
-        noManifestados
-      }
+      { noManifestados }
     )
 
-    setBorradorGuardado(
-      true
-    )
+    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -1333,266 +967,236 @@ function AuditorDashboard() {
   // ==========================================================
 
   async function guardarNoManifestadosOficiales() {
-    if (!costoSeleccionado) {
-      return
-    }
+    if (!costoSeleccionado) return
 
     const {
       data: usuarioActual,
-      error:
-        errorUsuario
-    } =
-      await supabase.auth.getUser()
+      error: errorUsuario
+    } = await supabase.auth.getUser()
 
-    if (
-      errorUsuario ||
-      !usuarioActual?.user?.id
-    ) {
-      throw new Error(
-        'No se pudo identificar al auditor.'
-      )
+    if (errorUsuario || !usuarioActual?.user?.id) {
+      throw new Error('No se pudo identificar al auditor.')
     }
 
-    const auditorId =
-      usuarioActual.user.id
+    const auditorId = usuarioActual.user.id
 
-    const {
-      error:
-        errorEliminar
-    } =
-      await supabase
-        .from('no_manifestados')
-        .delete()
-        .eq(
-          'costo_id',
-          costoSeleccionado.id
-        )
+    const { error: errorEliminar } = await supabase
+      .from('no_manifestados')
+      .delete()
+      .eq('costo_id', costoSeleccionado.id)
 
-    if (errorEliminar) {
-      throw errorEliminar
-    }
+    if (errorEliminar) throw errorEliminar
 
-    if (
-      noManifestados.length ===
-      0
-    ) {
-      return
-    }
+    if (noManifestados.length === 0) return
 
-    const registros =
-      noManifestados.map(
-        item => ({
-          costo_id:
-            costoSeleccionado.id,
+    const registros = noManifestados.map(item => ({
+      costo_id: costoSeleccionado.id,
+      sku: String(item.sku).trim(),
+      cantidad: Number(item.cantidad),
+      auditor_id: auditorId,
+      observacion: String(item.observacion || '').trim()
+    }))
 
-          sku:
-            String(
-              item.sku
-            ).trim(),
+    const { error: errorInsertar } = await supabase
+      .from('no_manifestados')
+      .insert(registros)
 
-          cantidad:
-            Number(
-              item.cantidad
-            ),
-
-          auditor_id:
-            auditorId,
-
-          observacion:
-            String(
-              item.observacion ||
-              ''
-            ).trim()
-        })
-      )
-
-    const {
-      error:
-        errorInsertar
-    } =
-      await supabase
-        .from('no_manifestados')
-        .insert(
-          registros
-        )
-
-    if (errorInsertar) {
-      throw errorInsertar
-    }
+    if (errorInsertar) throw errorInsertar
   }
 
   // ==========================================================
-  // GUARDAR COSTO
+  // GUARDAR CONTEO COMPLETO
   // ==========================================================
 
   async function guardarCosto() {
-    if (!costoSeleccionado) {
-      return
-    }
+    if (!costoSeleccionado || guardandoCosto) return
 
     try {
-      setGuardandoCosto(
-        true
+      setGuardandoCosto(true)
+      setError('')
+      setMensaje('')
+      setResultadoGuardado(null)
+
+      if (!conexionOnline) {
+        throw new Error(
+          'No tienes conexión a Internet. El conteo no se ha enviado a Supabase. Tus avances locales se mantienen guardados.'
+        )
+      }
+
+      if (costoSeleccionado.estado === 'terminado') {
+        throw new Error('Este costo ya está terminado.')
+      }
+
+      const numeroConteo = Number(
+        costoSeleccionado.conteo_habilitado
       )
 
-      setError('')
-
-      setMensaje('')
-
-      // ------------------------------------------------------
-      // VALIDAR ESTADO
-      // ------------------------------------------------------
-
-      if (
-        costoSeleccionado.estado ===
-        'terminado'
-      ) {
-        throw new Error(
-          'Este costo ya está terminado.'
-        )
+      if (numeroConteo < 1 || numeroConteo > 3) {
+        throw new Error('El número de conteo no es válido.')
       }
 
-      const numeroConteo =
-        Number(
-          costoSeleccionado.conteo_habilitado
-        )
-
-      if (
-        numeroConteo < 1 ||
-        numeroConteo > 3
-      ) {
-        throw new Error(
-          'El número de conteo no es válido.'
-        )
-      }
-
-      if (
-        detalles.length ===
-        0
-      ) {
-        throw new Error(
-          'No existen productos para guardar.'
-        )
+      if (detalles.length === 0) {
+        throw new Error('No existen productos para guardar.')
       }
 
       // ------------------------------------------------------
       // PREPARAR DETALLES
       // ------------------------------------------------------
 
-      const detallesParaGuardar =
-        detalles.map(
-          detalle => {
-            const borrador =
-              borradores[
-                detalle.id
-              ]
+      const detallesParaGuardar = detalles.map(detalle => {
+        const borrador = borradores[detalle.id]
 
-            if (!borrador) {
-              throw new Error(
-                `Falta completar el SKU ${detalle.sku}.`
-              )
-            }
+        if (!borrador) {
+          throw new Error(
+            `Falta completar el SKU ${detalle.sku}.`
+          )
+        }
 
-            if (
-              !Array.isArray(
-                borrador.cantidades
-              ) ||
-              borrador.cantidades.length ===
-                0
-            ) {
-              throw new Error(
-                `El SKU ${detalle.sku} no tiene cantidades válidas.`
-              )
-            }
+        if (
+          !Array.isArray(borrador.cantidades) ||
+          borrador.cantidades.length === 0
+        ) {
+          throw new Error(
+            `El SKU ${detalle.sku} no tiene cantidades válidas.`
+          )
+        }
 
-            const cantidades =
-              borrador.cantidades.map(
-                valor =>
-                  Number(valor)
-              )
+        if (
+          borrador.cantidades.some(
+            valor =>
+              valor === '' ||
+              valor === null ||
+              valor === undefined
+          )
+        ) {
+          throw new Error(
+            `Completa todas las cantidades del SKU ${detalle.sku}.`
+          )
+        }
 
-            if (
-              cantidades.some(
-                cantidad =>
-                  Number.isNaN(
-                    cantidad
-                  ) ||
-                  cantidad < 0
-              )
-            ) {
-              throw new Error(
-                `El SKU ${detalle.sku} tiene cantidades inválidas.`
-              )
-            }
-
-            if (
-              borrador.cantidades.some(
-                valor =>
-                  valor === '' ||
-                  valor === null ||
-                  valor === undefined
-              )
-            ) {
-              throw new Error(
-                `Completa todas las cantidades del SKU ${detalle.sku}.`
-              )
-            }
-
-            const factor =
-              Number(
-                borrador.factor
-              )
-
-            if (
-              Number.isNaN(
-                factor
-              ) ||
-              factor <= 0
-            ) {
-              throw new Error(
-                `El factor del SKU ${detalle.sku} debe ser mayor que 0.`
-              )
-            }
-
-            return {
-              detalleCostoId:
-                detalle.id,
-
-              cantidades,
-
-              factor
-            }
-          }
+        const cantidades = borrador.cantidades.map(
+          valor => Number(valor)
         )
+
+        if (
+          cantidades.some(
+            cantidad =>
+              !Number.isFinite(cantidad) ||
+              cantidad < 0
+          )
+        ) {
+          throw new Error(
+            `El SKU ${detalle.sku} tiene cantidades inválidas.`
+          )
+        }
+
+        const factor = Number(borrador.factor)
+
+        if (!Number.isFinite(factor) || factor <= 0) {
+          throw new Error(
+            `El factor del SKU ${detalle.sku} debe ser mayor que 0.`
+          )
+        }
+
+        return {
+          detalleCostoId: detalle.id,
+          cantidades,
+          factor
+        }
+      })
 
       // ------------------------------------------------------
       // VALIDAR NO MANIFESTADOS
       // ------------------------------------------------------
 
-      if (
-        !validarNoManifestados()
-      ) {
+      if (!validarNoManifestados()) {
         return
       }
 
       // ------------------------------------------------------
-      // GUARDAR CONTEO
+      // GUARDAR CONTEO EN SUPABASE
       // ------------------------------------------------------
 
-      await guardarConteoCosto(
+      const respuestaGuardado = await guardarConteoCosto(
         costoSeleccionado.id,
         numeroConteo,
         detallesParaGuardar
       )
 
+      if (!respuestaGuardado) {
+        throw new Error(
+          'No se recibió la confirmación del guardado.'
+        )
+      }
+
+      if (
+        Number(respuestaGuardado.totalLineas) !==
+        detallesParaGuardar.length
+      ) {
+        throw new Error(
+          'La cantidad de líneas guardadas no coincide con las enviadas. Verifica el costo antes de continuar.'
+        )
+      }
+
+      // ------------------------------------------------------
+      // INTERPRETAR EL RESULTADO REAL DEL SERVIDOR
+      // ------------------------------------------------------
+
+      const resultadoServidor = String(
+        respuestaGuardado.resultado || ''
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+
+      const resultadoReconocido =
+        resultadoServidor === 'conforme' ||
+        resultadoServidor === 'no_conforme'
+
+      const resultadoTexto =
+        resultadoServidor === 'conforme'
+          ? 'CONFORME'
+          : resultadoServidor === 'no_conforme'
+            ? 'NO CONFORME'
+            : 'RESULTADO NO DISPONIBLE'
+
       // ------------------------------------------------------
       // GUARDAR NO MANIFESTADOS
       // ------------------------------------------------------
 
-      await guardarNoManifestadosOficiales()
+      let advertenciaNoManifestados = ''
+
+      try {
+        await guardarNoManifestadosOficiales()
+      } catch (errorNoManifestados) {
+        console.error(
+          'El conteo se guardó, pero falló el registro de no manifestados:',
+          errorNoManifestados
+        )
+
+        advertenciaNoManifestados =
+          'El conteo se guardó, pero no se pudieron guardar los productos no manifestados. Verifica esos productos con el administrador.'
+      }
 
       // ------------------------------------------------------
-      // LIMPIAR BORRADORES
+      // CAPTURAR RESUMEN DEL RESULTADO
+      // ------------------------------------------------------
+
+      const resumenResultado = {
+        conteo: numeroConteo,
+        resultado: resultadoReconocido
+          ? resultadoServidor
+          : 'no_disponible',
+        resultadoTexto,
+        lineasConformes:
+          respuestaGuardado.lineasConformes ?? null,
+        lineasDiferencia:
+          respuestaGuardado.lineasDiferencia ?? null,
+        advertencia: advertenciaNoManifestados
+      }
+
+      // ------------------------------------------------------
+      // LIMPIAR BORRADORES DEL CONTEO YA GUARDADO
       // ------------------------------------------------------
 
       limpiarBorradoresCosto(
@@ -1601,178 +1205,109 @@ function AuditorDashboard() {
         numeroConteo
       )
 
-      limpiarSesionActual(
-        usuarioId
-      )
+      limpiarSesionActual(usuarioId)
 
       // ------------------------------------------------------
-      // RECARGAR COSTOS
+      // RECARGAR LISTA DE COSTOS
       // ------------------------------------------------------
 
       await cargarCostos()
 
       // ------------------------------------------------------
-      // LIMPIAR INTERFAZ
+      // VOLVER A LA LISTA PRINCIPAL
       // ------------------------------------------------------
 
       setDetalles([])
-
       setResultados({})
-
       setBorradores({})
-
       setNoManifestados([])
+      setCostoSeleccionado(null)
+      setVersionLimpieza(valor => valor + 1)
+      setBorradorGuardado(false)
 
-      setCostoSeleccionado(
-        null
-      )
+      // ------------------------------------------------------
+      // MOSTRAR VENTANA CON EL RESULTADO
+      // ------------------------------------------------------
 
-      setVersionLimpieza(
-        valor =>
-          valor + 1
-      )
-
-      setMensaje(
-        `Conteo ${numeroConteo} guardado correctamente.`
-      )
-
-      setBorradorGuardado(
-        false
-      )
+      setMensaje('')
+      setResultadoGuardado(resumenResultado)
     } catch (err) {
-      console.error(err)
+      console.error('Error guardando el conteo:', err)
 
       setError(
-        err?.message ||
-        'No se pudo guardar el conteo.'
+        err?.message || 'No se pudo guardar el conteo.'
       )
     } finally {
-      setGuardandoCosto(
-        false
-      )
+      setGuardandoCosto(false)
     }
   }
 
   // ==========================================================
-  // FILTRO DE DETALLES
+  // FILTRAR DETALLES
   // ==========================================================
 
-  const detallesFiltrados =
-    useMemo(() => {
-      let lista =
-        [...detalles]
+  const detallesFiltrados = useMemo(() => {
+    let lista = [...detalles]
+    const texto = busqueda.trim().toLowerCase()
 
-      const texto =
-        busqueda
-          .trim()
-          .toLowerCase()
+    if (texto) {
+      lista = lista.filter(detalle =>
+        String(detalle.sku || '').toLowerCase().includes(texto) ||
+        String(detalle.descripcion || '').toLowerCase().includes(texto) ||
+        String(detalle.ubicacion || '').toLowerCase().includes(texto)
+      )
+    }
 
-      if (texto) {
-        lista =
-          lista.filter(
-            detalle => {
-              return (
-                String(
-                  detalle.sku ||
-                  ''
-                )
-                  .toLowerCase()
-                  .includes(texto) ||
-                String(
-                  detalle.descripcion ||
-                  ''
-                )
-                  .toLowerCase()
-                  .includes(texto) ||
-                String(
-                  detalle.ubicacion ||
-                  ''
-                )
-                  .toLowerCase()
-                  .includes(texto)
-              )
-            }
-          )
-      }
+    if (filtroResultado !== 'todos') {
+      lista = lista.filter(
+        detalle => resultados[detalle.id] === filtroResultado
+      )
+    }
 
-      if (
-        filtroResultado !==
-        'todos'
-      ) {
-        lista =
-          lista.filter(
-            detalle =>
-              resultados[
-                detalle.id
-              ] ===
-              filtroResultado
-          )
-      }
-
-      return lista
-    }, [
-      detalles,
-      busqueda,
-      filtroResultado,
-      resultados
-    ])
+    return lista
+  }, [detalles, busqueda, filtroResultado, resultados])
 
   // ==========================================================
   // CONTADORES
   // ==========================================================
 
-  const totalDetalles =
-    detalles.length
+  const totalDetalles = detalles.length
 
-  const totalConformes =
-    Object.values(
-      resultados
-    ).filter(
-      resultado =>
-        resultado ===
-        'conforme'
-    ).length
+  const totalConformes = Object.values(resultados).filter(
+    resultado => resultado === 'conforme'
+  ).length
 
-  const totalDiferencias =
-    Object.values(
-      resultados
-    ).filter(
-      resultado =>
-        resultado ===
-        'diferencia'
-    ).length
+  const totalDiferencias = Object.values(resultados).filter(
+    resultado => resultado === 'diferencia'
+  ).length
 
   // ==========================================================
-  // RENDER LISTA DE COSTOS
+  // LISTA PRINCIPAL DE COSTOS
   // ==========================================================
 
   if (!costoSeleccionado) {
     return (
       <div className="auditor-page">
+        <ModalResultadoConteo
+          resultado={resultadoGuardado}
+          onCerrar={cerrarResultadoGuardado}
+        />
 
         <div className="auditor-main">
-
           <header className="auditor-dashboard-header">
-
             <div className="auditor-dashboard-heading">
-
               <span className="auditor-dashboard-kicker">
                 Panel de auditoría
               </span>
 
-              <h1>
-                Validación de costos
-              </h1>
+              <h1>Validación de costos</h1>
 
               <p>
-                Revisa los costos disponibles y
-                realiza el conteo habilitado.
+                Revisa los costos disponibles y realiza el conteo habilitado.
               </p>
-
             </div>
 
             <div className="auditor-dashboard-header-actions">
-
               <IndicadorConexion
                 conexionOnline={conexionOnline}
                 pendientesOffline={pendientesOffline}
@@ -1781,55 +1316,34 @@ function AuditorDashboard() {
               <button
                 type="button"
                 className="btn-logout"
-                onClick={
-                  cerrarSesion
-                }
+                onClick={cerrarSesion}
               >
-                <span className="btn-logout-icon">
-                  ↪
-                </span>
-
+                <span className="btn-logout-icon">↪</span>
                 Salir
               </button>
-
             </div>
-
           </header>
 
           {mensaje && (
-            <div className="auditor-alert success">
-              <span className="auditor-alert-icon">
-                ✓
-              </span>
-
-              <span>
-                {mensaje}
-              </span>
+            <div className="auditor-alert success" role="status">
+              <span className="auditor-alert-icon">✓</span>
+              <span>{mensaje}</span>
             </div>
           )}
 
           {error && (
-            <div className="auditor-alert error">
-              <span className="auditor-alert-icon">
-                !
-              </span>
-
-              <span>
-                {error}
-              </span>
+            <div className="auditor-alert error" role="alert">
+              <span className="auditor-alert-icon">!</span>
+              <span>{error}</span>
             </div>
           )}
 
           <AuditorCostos
             costos={costos}
             loading={loading}
-            onSeleccionar={
-              seleccionarCosto
-            }
+            onSeleccionar={seleccionarCosto}
           />
-
         </div>
-
       </div>
     )
   }
@@ -1838,40 +1352,23 @@ function AuditorDashboard() {
   // COSTO SELECCIONADO
   // ==========================================================
 
-  const numeroConteo =
-    Number(
-      costoSeleccionado.conteo_habilitado
-    )
+  const numeroConteo = Number(
+    costoSeleccionado.conteo_habilitado
+  )
 
   return (
     <div className="auditor-page">
-
       <div className="auditor-main">
-
-        {/* ====================================================
-            CABECERA DEL COSTO
-        ==================================================== */}
-
         <header className="auditor-topbar">
-
           <div className="auditor-cost-header">
-
             <div className="auditor-cost-heading">
-
               <button
                 type="button"
                 className="btn-volver"
-                onClick={
-                  volverCostos
-                }
-                disabled={
-                  guardandoCosto
-                }
+                onClick={volverCostos}
+                disabled={guardandoCosto}
               >
-                <span>
-                  ←
-                </span>
-
+                <span>←</span>
                 Volver a costos
               </button>
 
@@ -1880,42 +1377,25 @@ function AuditorDashboard() {
               </span>
 
               <h1>
-                Costo #
-                {costoSeleccionado.numero_costo}
+                Costo #{costoSeleccionado.numero_costo}
               </h1>
-
             </div>
 
             <div className="auditor-cost-meta">
-
               <div className="auditor-cost-meta-item">
-
-                <span>
-                  Conteo actual
-                </span>
-
-                <strong>
-                  {numeroConteo}
-                </strong>
-
+                <span>Conteo actual</span>
+                <strong>{numeroConteo}</strong>
               </div>
 
               <div className="auditor-cost-meta-item">
-
-                <span>
-                  Estado
-                </span>
-
+                <span>Estado</span>
                 <strong className="auditor-cost-meta-active">
                   En proceso
                 </strong>
-
               </div>
-
             </div>
 
             <div className="auditor-topbar-actions">
-
               <IndicadorConexion
                 conexionOnline={conexionOnline}
                 pendientesOffline={pendientesOffline}
@@ -1924,141 +1404,71 @@ function AuditorDashboard() {
               <button
                 type="button"
                 className="btn-logout"
-                onClick={
-                  cerrarSesion
-                }
-                disabled={
-                  guardandoCosto
-                }
+                onClick={cerrarSesion}
+                disabled={guardandoCosto}
               >
-                <span className="btn-logout-icon">
-                  ↪
-                </span>
-
+                <span className="btn-logout-icon">↪</span>
                 Salir
               </button>
-
             </div>
-
           </div>
-
         </header>
 
-        {/* ====================================================
-            MENSAJES
-        ==================================================== */}
-
         {mensaje && (
-          <div className="auditor-alert success">
-            <span className="auditor-alert-icon">
-              ✓
-            </span>
-
-            <span>
-              {mensaje}
-            </span>
+          <div className="auditor-alert success" role="status">
+            <span className="auditor-alert-icon">✓</span>
+            <span>{mensaje}</span>
           </div>
         )}
 
         {error && (
-          <div className="auditor-alert error">
-            <span className="auditor-alert-icon">
-              !
-            </span>
-
-            <span>
-              {error}
-            </span>
+          <div className="auditor-alert error" role="alert">
+            <span className="auditor-alert-icon">!</span>
+            <span>{error}</span>
           </div>
         )}
 
-        {/* ====================================================
-            RESUMEN
-        ==================================================== */}
+        {/* RESUMEN */}
 
         <section className="auditor-summary">
-
           <div className="summary-item">
-
-            <span className="summary-item-label">
-              Líneas
-            </span>
-
-            <strong>
-              {totalDetalles}
-            </strong>
-
+            <span className="summary-item-label">Líneas</span>
+            <strong>{totalDetalles}</strong>
           </div>
 
           <div className="summary-item conforme">
-
-            <span className="summary-item-label">
-              Conformes
-            </span>
-
-            <strong>
-              {totalConformes}
-            </strong>
-
+            <span className="summary-item-label">Conformes</span>
+            <strong>{totalConformes}</strong>
           </div>
 
           <div className="summary-item diferencia">
-
-            <span className="summary-item-label">
-              Diferencias
-            </span>
-
-            <strong>
-              {totalDiferencias}
-            </strong>
-
+            <span className="summary-item-label">Diferencias</span>
+            <strong>{totalDiferencias}</strong>
           </div>
 
           <div className="summary-item pendiente">
-
-            <span className="summary-item-label">
-              Pendientes
-            </span>
-
+            <span className="summary-item-label">Pendientes</span>
             <strong>
               {Math.max(
-                totalDetalles -
-                totalConformes -
-                totalDiferencias,
+                totalDetalles - totalConformes - totalDiferencias,
                 0
               )}
             </strong>
-
           </div>
-
         </section>
 
-        {/* ====================================================
-            HERRAMIENTAS
-        ==================================================== */}
+        {/* BÚSQUEDA Y FILTROS */}
 
         <section className="auditor-tools">
-
           <div className="auditor-search">
-
-            
-
             <input
               type="text"
               value={busqueda}
               placeholder="Buscar SKU, descripción o ubicación..."
               onChange={e => {
-                const valor =
-                  e.target.value
-
-                setBusqueda(
-                  valor
-                )
-
-                guardarSesionConFiltros({
-                  busqueda:
-                    valor
-                })
+                const valor = e.target.value
+                setBusqueda(valor)
+                guardarSesionConFiltros({ busqueda: valor })
               }}
               aria-label="Buscar productos"
             />
@@ -2069,37 +1479,27 @@ function AuditorDashboard() {
                 className="search-clear"
                 onClick={() => {
                   setBusqueda('')
-
-                  guardarSesionConFiltros({
-                    busqueda: ''
-                  })
+                  guardarSesionConFiltros({ busqueda: '' })
                 }}
                 aria-label="Limpiar búsqueda"
               >
                 ×
               </button>
             )}
-
           </div>
 
           <div className="auditor-filter-group">
-
             <button
               type="button"
               className={
-                filtroResultado ===
-                'todos'
+                filtroResultado === 'todos'
                   ? 'auditor-filter active'
                   : 'auditor-filter'
               }
               onClick={() => {
-                setFiltroResultado(
-                  'todos'
-                )
-
+                setFiltroResultado('todos')
                 guardarSesionConFiltros({
-                  filtroResultado:
-                    'todos'
+                  filtroResultado: 'todos'
                 })
               }}
             >
@@ -2109,19 +1509,14 @@ function AuditorDashboard() {
             <button
               type="button"
               className={
-                filtroResultado ===
-                'conforme'
+                filtroResultado === 'conforme'
                   ? 'auditor-filter active conforme'
                   : 'auditor-filter'
               }
               onClick={() => {
-                setFiltroResultado(
-                  'conforme'
-                )
-
+                setFiltroResultado('conforme')
                 guardarSesionConFiltros({
-                  filtroResultado:
-                    'conforme'
+                  filtroResultado: 'conforme'
                 })
               }}
             >
@@ -2131,106 +1526,67 @@ function AuditorDashboard() {
             <button
               type="button"
               className={
-                filtroResultado ===
-                'diferencia'
+                filtroResultado === 'diferencia'
                   ? 'auditor-filter active diferencia'
                   : 'auditor-filter'
               }
               onClick={() => {
-                setFiltroResultado(
-                  'diferencia'
-                )
-
+                setFiltroResultado('diferencia')
                 guardarSesionConFiltros({
-                  filtroResultado:
-                    'diferencia'
+                  filtroResultado: 'diferencia'
                 })
               }}
             >
               Diferencias
             </button>
-
           </div>
 
           <div className="auditor-search-info">
-
-            Mostrando{' '}
-            <strong>
-              {detallesFiltrados.length}
-            </strong>
-            {' '}
-            de{' '}
-            <strong>
-              {totalDetalles}
-            </strong>
-            {' '}
-            líneas
-
+            Mostrando <strong>{detallesFiltrados.length}</strong> de{' '}
+            <strong>{totalDetalles}</strong> líneas
           </div>
-
         </section>
 
-        {/* ====================================================
-            NO MANIFESTADOS
-        ==================================================== */}
+        {/* NO MANIFESTADOS */}
 
         <section className="auditor-no-manifestados">
-
           <div className="auditor-section-heading">
-
             <div>
-
               <span className="auditor-section-kicker">
                 Registro adicional
               </span>
 
-              <h2>
-                No manifestados
-              </h2>
+              <h2>No manifestados</h2>
 
               <p>
-                Registra productos encontrados físicamente
-                que no aparecen en el costo.
+                Registra productos encontrados físicamente que no aparecen en el costo.
               </p>
-
             </div>
 
             <span className="auditor-section-badge">
               {noManifestados.length}
             </span>
-
           </div>
 
           <div className="no-manifestados-form">
-
             <div className="no-manifestados-field">
-
-              <label htmlFor="no-manifestado-sku">
-                SKU
-              </label>
+              <label htmlFor="no-manifestado-sku">SKU</label>
 
               <input
                 id="no-manifestado-sku"
                 type="text"
                 placeholder="Código del producto"
-                value={
-                  nuevoNoManifestado.sku
-                }
+                value={nuevoNoManifestado.sku}
                 onChange={e =>
-                  setNuevoNoManifestado(
-                    anterior => ({
-                      ...anterior,
-                      sku:
-                        e.target.value
-                    })
-                  )
+                  setNuevoNoManifestado(anterior => ({
+                    ...anterior,
+                    sku: e.target.value
+                  }))
                 }
               />
-
             </div>
 
             <div className="no-manifestados-field">
-
               <label htmlFor="no-manifestado-cantidad">
                 Cantidad
               </label>
@@ -2240,35 +1596,20 @@ function AuditorDashboard() {
                 type="text"
                 inputMode="decimal"
                 placeholder="Cantidad"
-                value={
-                  nuevoNoManifestado.cantidad
-                }
+                value={nuevoNoManifestado.cantidad}
                 onChange={e => {
-                  const valor =
-                    e.target.value
+                  const valor = e.target.value
+                  if (!/^\d*\.?\d*$/.test(valor)) return
 
-                  if (
-                    !/^\d*\.?\d*$/.test(
-                      valor
-                    )
-                  ) {
-                    return
-                  }
-
-                  setNuevoNoManifestado(
-                    anterior => ({
-                      ...anterior,
-                      cantidad:
-                        valor
-                    })
-                  )
+                  setNuevoNoManifestado(anterior => ({
+                    ...anterior,
+                    cantidad: valor
+                  }))
                 }}
               />
-
             </div>
 
             <div className="no-manifestados-field no-manifestados-field-wide">
-
               <label htmlFor="no-manifestado-observacion">
                 Observación
               </label>
@@ -2277,359 +1618,204 @@ function AuditorDashboard() {
                 id="no-manifestado-observacion"
                 type="text"
                 placeholder="Observación opcional"
-                value={
-                  nuevoNoManifestado.observacion
-                }
+                value={nuevoNoManifestado.observacion}
                 onChange={e =>
-                  setNuevoNoManifestado(
-                    anterior => ({
-                      ...anterior,
-                      observacion:
-                        e.target.value
-                    })
-                  )
+                  setNuevoNoManifestado(anterior => ({
+                    ...anterior,
+                    observacion: e.target.value
+                  }))
                 }
               />
-
             </div>
 
             <button
               type="button"
               className="btn-no-manifestado-agregar"
-              onClick={
-                agregarNoManifestado
-              }
+              onClick={agregarNoManifestado}
             >
-              <span>
-                +
-              </span>
-
+              <span>+</span>
               Agregar
             </button>
-
           </div>
 
-          {noManifestados.length >
-            0 && (
-
+          {noManifestados.length > 0 && (
             <div className="no-manifestados-table-wrapper">
-
               <table className="no-manifestados-table">
-
                 <thead>
-
                   <tr>
-
-                    <th>
-                      SKU
-                    </th>
-
-                    <th>
-                      Cantidad
-                    </th>
-
-                    <th>
-                      Observación
-                    </th>
-
-                    <th>
-                      Acción
-                    </th>
-
+                    <th>SKU</th>
+                    <th>Cantidad</th>
+                    <th>Observación</th>
+                    <th>Acción</th>
                   </tr>
-
                 </thead>
 
                 <tbody>
+                  {noManifestados.map(item => (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          type="text"
+                          value={item.sku}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'sku',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
 
-                  {noManifestados.map(
-                    item => (
-                      <tr
-                        key={
-                          item.id
-                        }
-                      >
+                      <td>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={item.cantidad}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'cantidad',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
 
-                        <td>
+                      <td>
+                        <input
+                          type="text"
+                          value={item.observacion || ''}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'observacion',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
 
-                          <input
-                            type="text"
-                            value={
-                              item.sku
-                            }
-                            onChange={e =>
-                              editarNoManifestado(
-                                item.id,
-                                'sku',
-                                e.target.value
-                              )
-                            }
-                          />
-
-                        </td>
-
-                        <td>
-
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={
-                              item.cantidad
-                            }
-                            onChange={e =>
-                              editarNoManifestado(
-                                item.id,
-                                'cantidad',
-                                e.target.value
-                              )
-                            }
-                          />
-
-                        </td>
-
-                        <td>
-
-                          <input
-                            type="text"
-                            value={
-                              item.observacion ||
-                              ''
-                            }
-                            onChange={e =>
-                              editarNoManifestado(
-                                item.id,
-                                'observacion',
-                                e.target.value
-                              )
-                            }
-                          />
-
-                        </td>
-
-                        <td>
-
-                          <button
-                            type="button"
-                            className="btn-no-manifestado-eliminar"
-                            onClick={() =>
-                              eliminarNoManifestado(
-                                item.id
-                              )
-                            }
-                          >
-                            Eliminar
-                          </button>
-
-                        </td>
-
-                      </tr>
-                    )
-                  )}
-
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-no-manifestado-eliminar"
+                          onClick={() => eliminarNoManifestado(item.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
-
             </div>
           )}
-
         </section>
 
-        {/* ====================================================
-            TABLA DE CONTEO
-        ==================================================== */}
+        {/* TABLA DE CONTEO */}
 
         <section className="auditor-table-container">
-
           <div className="auditor-table-heading">
-
             <div>
-
               <span className="auditor-section-kicker">
                 Detalle del conteo
               </span>
 
-              <h2>
-                Productos a validar
-              </h2>
-
+              <h2>Productos a validar</h2>
             </div>
 
             <span className="auditor-table-count">
-              {detallesFiltrados.length}
-              {' '}
-              líneas
+              {detallesFiltrados.length} líneas
             </span>
-
           </div>
 
           {loadingDetalles ? (
-
             <div className="auditor-table-loading">
-
               <span className="auditor-loading-spinner" />
-
-              <span>
-                Cargando detalles...
-              </span>
-
+              <span>Cargando detalles...</span>
             </div>
-
-          ) : detallesFiltrados.length ===
-            0 ? (
-
+          ) : detallesFiltrados.length === 0 ? (
             <div className="auditor-empty">
-
-              <div className="auditor-empty-icon">
-                ⌕
-              </div>
-
-              <h3>
-                No hay productos para este filtro
-              </h3>
-
+              <div className="auditor-empty-icon">⌕</div>
+              <h3>No hay productos para este filtro</h3>
               <p>
-                Prueba cambiando la búsqueda
-                o el filtro de resultado.
+                Prueba cambiando la búsqueda o el filtro de resultado.
               </p>
-
             </div>
-
           ) : (
-
             <div className="auditor-table-wrapper">
-
               <table className="auditor-table">
-
                 <thead>
-
                   <tr>
-
-                    <th className="col-sku">
-                      SKU
-                    </th>
-
-                    <th className="col-descripcion">
-                      Descripción
-                    </th>
-
-                    <th className="col-um">
-                      UM
-                    </th>
-
-                    <th className="col-ubicacion">
-                      Ubicación
-                    </th>
-
-                    <th className="col-conteo">
-                      Conteo
-                    </th>
-
+                    <th className="col-sku">SKU</th>
+                    <th className="col-descripcion">Descripción</th>
+                    <th className="col-um">UM</th>
+                    <th className="col-ubicacion">Ubicación</th>
+                    <th className="col-conteo">Conteo</th>
                   </tr>
-
                 </thead>
 
                 <tbody>
+                  {detallesFiltrados.map(detalle => (
+                    <tr key={detalle.id}>
+                      <td>
+                        <strong className="auditor-sku">
+                          {detalle.sku}
+                        </strong>
+                      </td>
 
-                  {detallesFiltrados.map(
-                    detalle => (
-                      <tr
-                        key={
-                          detalle.id
-                        }
-                      >
+                      <td>
+                        <span className="auditor-descripcion">
+                          {detalle.descripcion}
+                        </span>
+                      </td>
 
-                        <td>
+                      <td>
+                        <span className="auditor-um">
+                          {detalle.um}
+                        </span>
+                      </td>
 
-                          <strong className="auditor-sku">
-                            {detalle.sku}
-                          </strong>
+                      <td>
+                        <span className="ubicacion-badge">
+                          {detalle.ubicacion}
+                        </span>
+                      </td>
 
-                        </td>
-
-                        <td>
-
-                          <span className="auditor-descripcion">
-                            {detalle.descripcion}
-                          </span>
-
-                        </td>
-
-                        <td>
-
-                          <span className="auditor-um">
-                            {detalle.um}
-                          </span>
-
-                        </td>
-
-                        <td>
-
-                          <span className="ubicacion-badge">
-                            {detalle.ubicacion}
-                          </span>
-
-                        </td>
-
-                        <td>
-
-                          <ConteoAuditor
-                            key={`${detalle.id}-${numeroConteo}-${versionLimpieza}`}
-                            detalle={
-                              detalle
-                            }
-                            costoId={
-                              costoSeleccionado.id
-                            }
-                            usuarioId={
-                              usuarioId
-                            }
-                            numeroConteo={
-                              numeroConteo
-                            }
-                            onRegistrado={
-                              datos =>
-                                manejarResultado(
-                                  datos.detalleId,
-                                  datos.resultado
-                                )
-                            }
-                            onCambio={
-                              manejarCambio
-                            }
-                          />
-
-                        </td>
-
-                      </tr>
-                    )
-                  )}
-
+                      <td>
+                        <ConteoAuditor
+                          key={`${detalle.id}-${numeroConteo}-${versionLimpieza}`}
+                          detalle={detalle}
+                          costoId={costoSeleccionado.id}
+                          usuarioId={usuarioId}
+                          numeroConteo={numeroConteo}
+                          onRegistrado={datos =>
+                            manejarResultado(
+                              datos.detalleId,
+                              datos.resultado
+                            )
+                          }
+                          onCambio={manejarCambio}
+                        />
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
-
             </div>
           )}
-
         </section>
 
-        {/* ====================================================
-            GUARDAR
-        ==================================================== */}
+        {/* GUARDAR */}
 
         <section className="auditor-save-section">
-
           <div className="auditor-save-info">
-
             <span className="auditor-save-status-icon">
-              {borradorGuardado
-                ? '✓'
-                : '•'}
+              {borradorGuardado ? '✓' : '•'}
             </span>
 
             <div>
-
               <strong>
                 {borradorGuardado
                   ? 'Cambios guardados localmente'
@@ -2637,43 +1823,27 @@ function AuditorDashboard() {
               </strong>
 
               <span>
-                Puedes guardar un borrador o finalizar
-                el conteo cuando hayas completado las líneas.
+                Puedes guardar un borrador o finalizar el conteo cuando hayas completado las líneas.
               </span>
-
             </div>
-
           </div>
 
           <div className="auditor-save-actions">
-
             <button
               type="button"
               className="btn-guardar-borrador"
-              onClick={
-                guardarBorradorActual
-              }
-              disabled={
-                guardandoCosto
-              }
+              onClick={guardarBorradorActual}
+              disabled={guardandoCosto}
             >
-              <span>
-                ⬇
-              </span>
-
+              <span>⬇</span>
               Guardar borrador
             </button>
 
             <button
               type="button"
               className="btn-guardar-costo"
-              onClick={
-                guardarCosto
-              }
-              disabled={
-                guardandoCosto ||
-                loadingDetalles
-              }
+              onClick={guardarCosto}
+              disabled={guardandoCosto || loadingDetalles}
             >
               {guardandoCosto ? (
                 <>
@@ -2682,23 +1852,17 @@ function AuditorDashboard() {
                 </>
               ) : (
                 <>
-                  <span>
-                    ✓
-                  </span>
-
+                  <span>✓</span>
                   Guardar Conteo {numeroConteo}
                 </>
               )}
             </button>
-
           </div>
-
         </section>
-
       </div>
-
     </div>
   )
 }
 
 export default AuditorDashboard
+

@@ -1,10 +1,12 @@
+
 import { useEffect, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
 
 import {
   habilitarConteo,
-  reiniciarCosto
+  reiniciarCosto,
+  iniciarCosto
 } from '../../services/costos'
 
 import StatusBadge from '../../components/StatusBadge'
@@ -18,9 +20,7 @@ import ConteoAdmin from './ConteoAdmin'
 // ==========================================================
 
 function obtenerClaveSesionAdmin(usuarioId) {
-
   return `validacion-costos-admin-${usuarioId}-sesion`
-
 }
 
 
@@ -29,48 +29,36 @@ function obtenerClaveSesionAdmin(usuarioId) {
 // ==========================================================
 
 function cargarSesionAdmin(usuarioId) {
-
   if (!usuarioId) {
     return null
   }
 
   try {
-
-    const clave =
-      obtenerClaveSesionAdmin(usuarioId)
-
-    const guardado =
-      localStorage.getItem(clave)
+    const clave = obtenerClaveSesionAdmin(usuarioId)
+    const guardado = localStorage.getItem(clave)
 
     if (!guardado) {
       return null
     }
 
-    const sesion =
-      JSON.parse(guardado)
+    const sesion = JSON.parse(guardado)
 
     if (
       !sesion ||
       String(sesion.usuarioId) !== String(usuarioId)
     ) {
-
       return null
-
     }
 
     return sesion
-
   } catch (error) {
-
     console.error(
       'No se pudo cargar la sesión del administrador:',
       error
     )
 
     return null
-
   }
-
 }
 
 
@@ -79,39 +67,27 @@ function cargarSesionAdmin(usuarioId) {
 // ==========================================================
 
 function guardarSesionAdmin(usuarioId, datos) {
-
   if (!usuarioId) {
     return
   }
 
   try {
-
-    const clave =
-      obtenerClaveSesionAdmin(usuarioId)
+    const clave = obtenerClaveSesionAdmin(usuarioId)
 
     localStorage.setItem(
       clave,
       JSON.stringify({
-
         usuarioId,
-
         ...datos,
-
-        updatedAt:
-          new Date().toISOString()
-
+        updatedAt: new Date().toISOString()
       })
     )
-
   } catch (error) {
-
     console.error(
       'No se pudo guardar la sesión del administrador:',
       error
     )
-
   }
-
 }
 
 
@@ -120,26 +96,20 @@ function guardarSesionAdmin(usuarioId, datos) {
 // ==========================================================
 
 function limpiarSesionAdmin(usuarioId) {
-
   if (!usuarioId) {
     return
   }
 
   try {
-
     localStorage.removeItem(
       obtenerClaveSesionAdmin(usuarioId)
     )
-
   } catch (error) {
-
     console.error(
       'No se pudo limpiar la sesión del administrador:',
       error
     )
-
   }
-
 }
 
 
@@ -148,46 +118,15 @@ function limpiarSesionAdmin(usuarioId) {
 // ==========================================================
 
 function CostosAdmin({ usuarioId }) {
-
-  const [
-    costos,
-    setCostos
-  ] = useState([])
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true)
-
-  const [
-    busqueda,
-    setBusqueda
-  ] = useState('')
-
-  const [
-    costoSeleccionado,
-    setCostoSeleccionado
-  ] = useState(null)
-
-  const [
-    conteoAdmin,
-    setConteoAdmin
-  ] = useState(null)
-
-  const [
-    habilitando,
-    setHabilitando
-  ] = useState(null)
-
-  const [
-    reiniciando,
-    setReiniciando
-  ] = useState(null)
-
-  const [
-    restauracionRealizada,
-    setRestauracionRealizada
-  ] = useState(false)
+  const [costos, setCostos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busqueda, setBusqueda] = useState('')
+  const [costoSeleccionado, setCostoSeleccionado] = useState(null)
+  const [conteoAdmin, setConteoAdmin] = useState(null)
+  const [habilitando, setHabilitando] = useState(null)
+  const [reiniciando, setReiniciando] = useState(null)
+  const [abriendoConteo, setAbriendoConteo] = useState(null)
+  const [restauracionRealizada, setRestauracionRealizada] = useState(false)
 
 
   // ==========================================================
@@ -195,45 +134,34 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   useEffect(() => {
-
     cargarCostos()
-
   }, [])
 
 
   async function cargarCostos() {
-
     setLoading(true)
 
-    const {
-      data,
-      error
-    } = await supabase
-      .from('costos')
-      .select('*')
-      .order(
-        'created_at',
-        {
+    try {
+      const {
+        data,
+        error
+      } = await supabase
+        .from('costos')
+        .select('*')
+        .order('created_at', {
           ascending: false
-        }
-      )
+        })
 
+      if (error) {
+        throw error
+      }
 
-    if (error) {
-
-      console.error(error)
-
+      setCostos(data || [])
+    } catch (error) {
+      console.error('Error cargando costos:', error)
+    } finally {
       setLoading(false)
-
-      return
-
     }
-
-
-    setCostos(data || [])
-
-    setLoading(false)
-
   }
 
 
@@ -242,28 +170,19 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   useEffect(() => {
-
     if (
       !usuarioId ||
       loading ||
       restauracionRealizada
     ) {
-
       return
-
     }
 
-
-    const sesion =
-      cargarSesionAdmin(usuarioId)
-
+    const sesion = cargarSesionAdmin(usuarioId)
 
     if (!sesion) {
-
       setRestauracionRealizada(true)
-
       return
-
     }
 
 
@@ -271,12 +190,8 @@ function CostosAdmin({ usuarioId }) {
     // RESTAURAR BÚSQUEDA
     // ========================================================
 
-    if (
-      typeof sesion.busqueda === 'string'
-    ) {
-
+    if (typeof sesion.busqueda === 'string') {
       setBusqueda(sesion.busqueda)
-
     }
 
 
@@ -284,14 +199,9 @@ function CostosAdmin({ usuarioId }) {
     // SESIÓN DE LISTA
     // ========================================================
 
-    if (
-      sesion.view === 'lista'
-    ) {
-
+    if (sesion.view === 'lista') {
       setRestauracionRealizada(true)
-
       return
-
     }
 
 
@@ -300,13 +210,9 @@ function CostosAdmin({ usuarioId }) {
     // ========================================================
 
     if (!sesion.costoId) {
-
       limpiarSesionAdmin(usuarioId)
-
       setRestauracionRealizada(true)
-
       return
-
     }
 
 
@@ -314,12 +220,10 @@ function CostosAdmin({ usuarioId }) {
     // BUSCAR COSTO
     // ========================================================
 
-    const costo =
-      costos.find(
-        item =>
-          Number(item.id) ===
-          Number(sesion.costoId)
-      )
+    const costo = costos.find(
+      item =>
+        Number(item.id) === Number(sesion.costoId)
+    )
 
 
     // ========================================================
@@ -327,94 +231,74 @@ function CostosAdmin({ usuarioId }) {
     // ========================================================
 
     if (!costo) {
-
       console.log(
         'No se encontró el costo guardado en la sesión.'
       )
 
       limpiarSesionAdmin(usuarioId)
-
       setRestauracionRealizada(true)
-
       return
-
     }
 
 
     // ========================================================
     // RESTAURAR DETALLE
+    // La consulta del detalle se mantiene independiente
+    // del acceso al registro de conteos.
     // ========================================================
 
-    if (
-      sesion.view === 'detalle'
-    ) {
-
+    if (sesion.view === 'detalle') {
       setCostoSeleccionado(costo)
-
       setRestauracionRealizada(true)
-
       return
-
     }
 
 
     // ========================================================
     // RESTAURAR CONTEO
+    // Verificar nuevamente el responsable en Supabase.
     // ========================================================
 
-    if (
-      sesion.view === 'conteo'
-    ) {
-
-      const numeroConteo =
-        Number(sesion.numeroConteo)
-
-      const conteoHabilitado =
-        Number(costo.conteo_habilitado)
-
+    if (sesion.view === 'conteo') {
+      const numeroConteo = Number(sesion.numeroConteo)
+      const conteoHabilitado = Number(costo.conteo_habilitado)
 
       if (
-        ![1, 2, 3].includes(numeroConteo)
-      ) {
-
-        limpiarSesionAdmin(usuarioId)
-
-        setRestauracionRealizada(true)
-
-        return
-
-      }
-
-
-      if (
+        ![1, 2, 3].includes(numeroConteo) ||
         conteoHabilitado !== numeroConteo
       ) {
-
-        console.log(
-          'El conteo guardado ya no está habilitado.'
-        )
-
         limpiarSesionAdmin(usuarioId)
-
         setRestauracionRealizada(true)
-
         return
-
       }
 
-
-      setConteoAdmin({
-
-        costo,
-
-        numeroConteo
-
-      })
-
+      // Evitar que el efecto vuelva a iniciar otra restauración.
       setRestauracionRealizada(true)
 
-      return
+      iniciarCosto(costo.id)
+        .then(() => {
+          setConteoAdmin({
+            costo,
+            numeroConteo
+          })
+        })
+        .catch(async error => {
+          console.error(
+            'No se pudo restaurar el conteo del administrador:',
+            error
+          )
 
+          limpiarSesionAdmin(usuarioId)
+
+          alert(
+            error?.message ||
+            'No puedes continuar este conteo porque está asignado a otro usuario.'
+          )
+
+          await cargarCostos()
+        })
+
+      return
     }
 
 
@@ -423,9 +307,7 @@ function CostosAdmin({ usuarioId }) {
     // ========================================================
 
     limpiarSesionAdmin(usuarioId)
-
     setRestauracionRealizada(true)
-
   }, [
     usuarioId,
     loading,
@@ -436,51 +318,55 @@ function CostosAdmin({ usuarioId }) {
 
   // ==========================================================
   // REALIZAR CONTEO
+  // Validar el responsable antes de abrir la pantalla.
   // ==========================================================
 
-  function realizarConteo(costo) {
+  async function realizarConteo(costo) {
+    const numeroConteo = Number(costo.conteo_habilitado)
 
-    const numeroConteo =
-      Number(costo.conteo_habilitado)
-
-
-    if (
-      ![1, 2, 3].includes(numeroConteo)
-    ) {
-
+    if (![1, 2, 3].includes(numeroConteo)) {
       alert(
         'Este costo no tiene un conteo habilitado.'
       )
 
       return
-
     }
 
+    try {
+      setAbriendoConteo(costo.id)
 
-    guardarSesionAdmin(
-      usuarioId,
-      {
+      // Supabase verifica si el administrador es responsable
+      // o si el costo todavía no ha sido iniciado.
+      await iniciarCosto(costo.id)
 
+      // Guardar la sesión únicamente después de autorizar
+      // al administrador.
+      guardarSesionAdmin(usuarioId, {
         view: 'conteo',
-
         costoId: costo.id,
-
         numeroConteo,
-
         busqueda
+      })
 
-      }
-    )
+      setConteoAdmin({
+        costo,
+        numeroConteo
+      })
+    } catch (error) {
+      console.error(
+        'No se pudo abrir el conteo:',
+        error
+      )
 
+      alert(
+        error?.message ||
+        'No puedes abrir este costo porque está asignado a otro usuario.'
+      )
 
-    setConteoAdmin({
-
-      costo,
-
-      numeroConteo
-
-    })
-
+      await cargarCostos()
+    } finally {
+      setAbriendoConteo(null)
+    }
   }
 
 
@@ -489,13 +375,10 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   async function manejarConteoGuardado() {
-
     limpiarSesionAdmin(usuarioId)
-
     setConteoAdmin(null)
 
     await cargarCostos()
-
   }
 
 
@@ -504,13 +387,10 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   function volverDesdeConteo() {
-
     limpiarSesionAdmin(usuarioId)
-
     setConteoAdmin(null)
 
     cargarCostos()
-
   }
 
 
@@ -519,23 +399,13 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   function verDetalle(costo) {
-
-    guardarSesionAdmin(
-      usuarioId,
-      {
-
-        view: 'detalle',
-
-        costoId: costo.id,
-
-        busqueda
-
-      }
-    )
-
+    guardarSesionAdmin(usuarioId, {
+      view: 'detalle',
+      costoId: costo.id,
+      busqueda
+    })
 
     setCostoSeleccionado(costo)
-
   }
 
 
@@ -544,11 +414,8 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   function volverDesdeDetalle() {
-
     limpiarSesionAdmin(usuarioId)
-
     setCostoSeleccionado(null)
-
   }
 
 
@@ -557,11 +424,8 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   async function habilitarConteo2(costo) {
-
     try {
-
       setHabilitando(costo.id)
-
 
       const {
         data: detalles,
@@ -569,34 +433,20 @@ function CostosAdmin({ usuarioId }) {
       } = await supabase
         .from('detalle_costos')
         .select('id')
-        .eq(
-          'costo_id',
-          costo.id
-        )
-
+        .eq('costo_id', costo.id)
 
       if (errorDetalles) {
         throw errorDetalles
       }
 
-
       const idsDetalles =
-        detalles?.map(
-          detalle =>
-            detalle.id
-        ) || []
+        detalles?.map(detalle => detalle.id) || []
 
-
-      if (
-        idsDetalles.length === 0
-      ) {
-
+      if (idsDetalles.length === 0) {
         throw new Error(
           'El costo no tiene productos registrados.'
         )
-
       }
-
 
       const {
         data: diferencias,
@@ -609,60 +459,33 @@ function CostosAdmin({ usuarioId }) {
           numero_conteo,
           resultado
         `)
-        .eq(
-          'numero_conteo',
-          1
-        )
-        .eq(
-          'resultado',
-          'diferencia'
-        )
-        .in(
-          'detalle_costo_id',
-          idsDetalles
-        )
-
+        .eq('numero_conteo', 1)
+        .eq('resultado', 'diferencia')
+        .in('detalle_costo_id', idsDetalles)
 
       if (error) {
         throw error
       }
 
-
-      if (
-        !diferencias ||
-        diferencias.length === 0
-      ) {
-
+      if (!diferencias || diferencias.length === 0) {
         throw new Error(
           'No existen productos con diferencias en el Conteo 1.'
         )
-
       }
 
-
-      await habilitarConteo(
-        costo.id,
-        2
-      )
-
+      await habilitarConteo(costo.id, 2)
 
       await cargarCostos()
-
     } catch (error) {
-
       console.error(error)
 
       alert(
         error.message ||
         'No se pudo habilitar el Conteo 2.'
       )
-
     } finally {
-
       setHabilitando(null)
-
     }
-
   }
 
 
@@ -671,11 +494,8 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   async function habilitarConteo3(costo) {
-
     try {
-
       setHabilitando(costo.id)
-
 
       const {
         data: detalles,
@@ -683,34 +503,20 @@ function CostosAdmin({ usuarioId }) {
       } = await supabase
         .from('detalle_costos')
         .select('id')
-        .eq(
-          'costo_id',
-          costo.id
-        )
-
+        .eq('costo_id', costo.id)
 
       if (errorDetalles) {
         throw errorDetalles
       }
 
-
       const idsDetalles =
-        detalles?.map(
-          detalle =>
-            detalle.id
-        ) || []
+        detalles?.map(detalle => detalle.id) || []
 
-
-      if (
-        idsDetalles.length === 0
-      ) {
-
+      if (idsDetalles.length === 0) {
         throw new Error(
           'El costo no tiene productos registrados.'
         )
-
       }
-
 
       const {
         data: diferencias,
@@ -723,60 +529,33 @@ function CostosAdmin({ usuarioId }) {
           numero_conteo,
           resultado
         `)
-        .eq(
-          'numero_conteo',
-          2
-        )
-        .eq(
-          'resultado',
-          'diferencia'
-        )
-        .in(
-          'detalle_costo_id',
-          idsDetalles
-        )
-
+        .eq('numero_conteo', 2)
+        .eq('resultado', 'diferencia')
+        .in('detalle_costo_id', idsDetalles)
 
       if (error) {
         throw error
       }
 
-
-      if (
-        !diferencias ||
-        diferencias.length === 0
-      ) {
-
+      if (!diferencias || diferencias.length === 0) {
         throw new Error(
           'No existen productos con diferencias en el Conteo 2.'
         )
-
       }
 
-
-      await habilitarConteo(
-        costo.id,
-        3
-      )
-
+      await habilitarConteo(costo.id, 3)
 
       await cargarCostos()
-
     } catch (error) {
-
       console.error(error)
 
       alert(
         error.message ||
         'No se pudo habilitar el Conteo 3.'
       )
-
     } finally {
-
       setHabilitando(null)
-
     }
-
   }
 
 
@@ -785,58 +564,40 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   async function manejarReinicio(costo) {
-
-    const confirmado =
-      window.confirm(
-        `¿Reiniciar el costo ${costo.numero_costo}?\n\n` +
-        `Se eliminarán los conteos y no manifestados ` +
-        `realizados hasta ahora y se liberará el costo ` +
-        `para que otro auditor pueda trabajarlo.\n\n` +
-        `Los productos originales del costo NO serán eliminados.`
-      )
-
+    const confirmado = window.confirm(
+      `¿Reiniciar el costo ${costo.numero_costo}?\n\n` +
+      `Se eliminarán los conteos y no manifestados ` +
+      `realizados hasta ahora y se liberará el costo ` +
+      `para que otro auditor pueda trabajarlo.\n\n` +
+      `Los productos originales del costo NO serán eliminados.`
+    )
 
     if (!confirmado) {
       return
     }
 
-
     try {
-
       setReiniciando(costo.id)
-
 
       await reiniciarCosto(costo.id)
 
-
-      const sesion =
-        cargarSesionAdmin(usuarioId)
-
+      const sesion = cargarSesionAdmin(usuarioId)
 
       if (
         sesion &&
-        Number(sesion.costoId) ===
-        Number(costo.id)
+        Number(sesion.costoId) === Number(costo.id)
       ) {
-
         limpiarSesionAdmin(usuarioId)
-
         setCostoSeleccionado(null)
-
         setConteoAdmin(null)
-
       }
-
 
       alert(
         `El costo ${costo.numero_costo} fue reiniciado correctamente.`
       )
 
-
       await cargarCostos()
-
     } catch (error) {
-
       console.error(
         'Error reiniciando costo:',
         error
@@ -846,13 +607,9 @@ function CostosAdmin({ usuarioId }) {
         error?.message ||
         'No se pudo reiniciar el costo.'
       )
-
     } finally {
-
       setReiniciando(null)
-
     }
-
   }
 
 
@@ -861,65 +618,32 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   function manejarBusqueda(valor) {
-
     setBusqueda(valor)
 
+    const sesion = cargarSesionAdmin(usuarioId)
 
-    const sesion =
-      cargarSesionAdmin(usuarioId)
-
-
-    if (
-      sesion?.view === 'detalle'
-    ) {
-
-      guardarSesionAdmin(
-        usuarioId,
-        {
-
-          ...sesion,
-
-          busqueda: valor
-
-        }
-      )
-
-      return
-
-    }
-
-
-    if (
-      sesion?.view === 'conteo'
-    ) {
-
-      guardarSesionAdmin(
-        usuarioId,
-        {
-
-          ...sesion,
-
-          busqueda: valor
-
-        }
-      )
-
-      return
-
-    }
-
-
-    guardarSesionAdmin(
-      usuarioId,
-      {
-
-        view: 'lista',
-
+    if (sesion?.view === 'detalle') {
+      guardarSesionAdmin(usuarioId, {
+        ...sesion,
         busqueda: valor
+      })
 
-      }
-    )
+      return
+    }
 
+    if (sesion?.view === 'conteo') {
+      guardarSesionAdmin(usuarioId, {
+        ...sesion,
+        busqueda: valor
+      })
+
+      return
+    }
+
+    guardarSesionAdmin(usuarioId, {
+      view: 'lista',
+      busqueda: valor
+    })
   }
 
 
@@ -927,41 +651,31 @@ function CostosAdmin({ usuarioId }) {
   // FILTRO
   // ==========================================================
 
-  const costosFiltrados =
-    costos.filter(
-      costo =>
-        String(costo.numero_costo)
-          .toLowerCase()
-          .includes(
-            busqueda.toLowerCase()
-          )
-    )
+  const costosFiltrados = costos.filter(
+    costo =>
+      String(costo.numero_costo)
+        .toLowerCase()
+        .includes(busqueda.toLowerCase())
+  )
 
 
   // ==========================================================
   // RESUMEN
   // ==========================================================
 
-  const totalCostos =
-    costos.length
+  const totalCostos = costos.length
 
-  const costosPendientes =
-    costos.filter(
-      costo =>
-        costo.estado === 'pendiente'
-    ).length
+  const costosPendientes = costos.filter(
+    costo => costo.estado === 'pendiente'
+  ).length
 
-  const costosEnProceso =
-    costos.filter(
-      costo =>
-        costo.estado === 'en_proceso'
-    ).length
+  const costosEnProceso = costos.filter(
+    costo => costo.estado === 'en_proceso'
+  ).length
 
-  const costosTerminados =
-    costos.filter(
-      costo =>
-        costo.estado === 'terminado'
-    ).length
+  const costosTerminados = costos.filter(
+    costo => costo.estado === 'terminado'
+  ).length
 
 
   // ==========================================================
@@ -969,23 +683,14 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   if (conteoAdmin) {
-
     return (
-
       <ConteoAdmin
-
         costo={conteoAdmin.costo}
-
         numeroConteo={conteoAdmin.numeroConteo}
-
         onGuardado={manejarConteoGuardado}
-
         onVolver={volverDesdeConteo}
-
       />
-
     )
-
   }
 
 
@@ -994,19 +699,12 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   if (costoSeleccionado) {
-
     return (
-
       <DetalleCosto
-
         costo={costoSeleccionado}
-
         onVolver={volverDesdeDetalle}
-
       />
-
     )
-
   }
 
 
@@ -1015,18 +713,12 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   return (
-
     <section className="costos-admin">
 
-
-      {/* ====================================================
-          ENCABEZADO
-          ==================================================== */}
+      {/* ENCABEZADO */}
 
       <header className="costos-admin-header">
-
         <div className="costos-admin-heading">
-
           <span className="costos-admin-label">
             Control de costos
           </span>
@@ -1039,674 +731,365 @@ function CostosAdmin({ usuarioId }) {
             Consulta, supervisa y habilita los conteos
             correspondientes a cada costo.
           </p>
-
         </div>
-
       </header>
 
 
-      {/* ====================================================
-          RESUMEN
-          ==================================================== */}
+      {/* RESUMEN */}
 
       <div className="costos-summary-grid">
 
-
         <div className="costos-summary-card">
-
-          <div className="costos-summary-icon blue">
-            #
-          </div>
-
+          <div className="costos-summary-icon blue">#</div>
           <div>
-
-            <span>
-              Total
-            </span>
-
-            <strong>
-              {totalCostos}
-            </strong>
-
+            <span>Total</span>
+            <strong>{totalCostos}</strong>
           </div>
-
         </div>
 
-
         <div className="costos-summary-card">
-
-          <div className="costos-summary-icon orange">
-            !
-          </div>
-
+          <div className="costos-summary-icon orange">!</div>
           <div>
-
-            <span>
-              Pendientes
-            </span>
-
-            <strong>
-              {costosPendientes}
-            </strong>
-
+            <span>Pendientes</span>
+            <strong>{costosPendientes}</strong>
           </div>
-
         </div>
 
-
         <div className="costos-summary-card">
-
-          <div className="costos-summary-icon purple">
-            ↻
-          </div>
-
+          <div className="costos-summary-icon purple">↻</div>
           <div>
-
-            <span>
-              En proceso
-            </span>
-
-            <strong>
-              {costosEnProceso}
-            </strong>
-
+            <span>En proceso</span>
+            <strong>{costosEnProceso}</strong>
           </div>
-
         </div>
 
-
         <div className="costos-summary-card">
-
-          <div className="costos-summary-icon green">
-            ✓
-          </div>
-
+          <div className="costos-summary-icon green">✓</div>
           <div>
-
-            <span>
-              Terminados
-            </span>
-
-            <strong>
-              {costosTerminados}
-            </strong>
-
+            <span>Terminados</span>
+            <strong>{costosTerminados}</strong>
           </div>
-
         </div>
 
       </div>
 
 
-      {/* ====================================================
-          HERRAMIENTAS
-          ==================================================== */}
+      {/* HERRAMIENTAS */}
 
       <div className="costos-toolbar">
-
         <div className="costos-search">
-
-          
-
           <input
-
             type="text"
-
             placeholder="Buscar por número de costo..."
-
             value={busqueda}
-
-            onChange={
-              e =>
-                manejarBusqueda(
-                  e.target.value
-                )
-            }
-
+            onChange={e => manejarBusqueda(e.target.value)}
             aria-label="Buscar costo"
-
           />
 
-
           {busqueda && (
-
             <button
-
               type="button"
-
               className="costos-search-clear"
-
-              onClick={() =>
-                manejarBusqueda('')
-              }
-
+              onClick={() => manejarBusqueda('')}
               title="Limpiar búsqueda"
-
               aria-label="Limpiar búsqueda"
-
             >
               ×
             </button>
-
           )}
-
         </div>
 
-
         <div className="costos-results-count">
-
-          <strong>
-            {costosFiltrados.length}
-          </strong>
-
+          <strong>{costosFiltrados.length}</strong>
           <span>
-
             {costosFiltrados.length === 1
               ? ' costo'
               : ' costos'}
-
           </span>
-
         </div>
-
       </div>
 
 
-      {/* ====================================================
-          CARGANDO
-          ==================================================== */}
+      {/* CARGANDO */}
 
       {loading && (
-
         <div className="costos-empty-card">
-
           <div className="costos-loading-spinner"></div>
-
-          <h4>
-            Cargando costos
-          </h4>
-
-          <p>
-            Estamos obteniendo la información...
-          </p>
-
+          <h4>Cargando costos</h4>
+          <p>Estamos obteniendo la información...</p>
         </div>
-
       )}
 
 
-      {/* ====================================================
-          SIN RESULTADOS
-          ==================================================== */}
+      {/* SIN RESULTADOS */}
 
-      {!loading &&
-        costosFiltrados.length === 0 && (
-
-          <div className="costos-empty-card">
-
-            <div className="costos-empty-icon">
-
-              {busqueda
-                ? '⌕'
-                : '+'}
-
-            </div>
-
-            <h4>
-
-              {busqueda
-                ? 'No encontramos resultados'
-                : 'No existen costos registrados'}
-
-            </h4>
-
-            <p>
-
-              {busqueda
-                ? 'Intenta buscar utilizando otro número de costo.'
-                : 'Cuando registres un nuevo costo aparecerá aquí.'}
-
-            </p>
-
-
-            {busqueda && (
-
-              <button
-
-                className="costos-clear-button"
-
-                type="button"
-
-                onClick={() =>
-                  manejarBusqueda('')
-                }
-
-              >
-                Limpiar búsqueda
-              </button>
-
-            )}
-
+      {!loading && costosFiltrados.length === 0 && (
+        <div className="costos-empty-card">
+          <div className="costos-empty-icon">
+            {busqueda ? '⌕' : '+'}
           </div>
 
-        )}
+          <h4>
+            {busqueda
+              ? 'No encontramos resultados'
+              : 'No existen costos registrados'}
+          </h4>
+
+          <p>
+            {busqueda
+              ? 'Intenta buscar utilizando otro número de costo.'
+              : 'Cuando registres un nuevo costo aparecerá aquí.'}
+          </p>
+
+          {busqueda && (
+            <button
+              className="costos-clear-button"
+              type="button"
+              onClick={() => manejarBusqueda('')}
+            >
+              Limpiar búsqueda
+            </button>
+          )}
+        </div>
+      )}
 
 
-      {/* ====================================================
-          TABLA
-          ==================================================== */}
+      {/* TABLA */}
 
-      {!loading &&
-        costosFiltrados.length > 0 && (
+      {!loading && costosFiltrados.length > 0 && (
+        <div className="costos-table-wrapper">
+          <table className="costos-table">
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Estado</th>
+                <th>Líneas</th>
+                <th>Conteo actual</th>
+                <th>Resultado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
 
-          <div className="costos-table-wrapper">
+            <tbody>
+              {costosFiltrados.map(costo => (
+                <tr key={costo.id}>
 
-            <table className="costos-table">
+                  {/* NÚMERO */}
 
-              <thead>
+                  <td>
+                    <div className="costos-number-cell">
+                      <div className="costos-number-icon">#</div>
 
-                <tr>
+                      <div>
+                        <strong>{costo.numero_costo}</strong>
+                        <span>Costo registrado</span>
+                      </div>
+                    </div>
+                  </td>
 
-                  <th>
-                    Número
-                  </th>
 
-                  <th>
-                    Estado
-                  </th>
+                  {/* ESTADO */}
 
-                  <th>
-                    Líneas
-                  </th>
+                  <td>
+                    <StatusBadge estado={costo.estado} />
+                  </td>
 
-                  <th>
-                    Conteo actual
-                  </th>
 
-                  <th>
-                    Resultado
-                  </th>
+                  {/* LÍNEAS */}
 
-                  <th>
-                    Acciones
-                  </th>
+                  <td>
+                    <span className="costos-lines-value">
+                      {costo.lineas_count}
+                    </span>
+                  </td>
+
+
+                  {/* CONTEO */}
+
+                  <td>
+                    <span
+                      className={
+                        Number(costo.conteo_habilitado) === 0
+                          ? 'conteo-pill none'
+                          : 'conteo-pill active'
+                      }
+                    >
+                      <span className="conteo-pill-dot"></span>
+
+                      {Number(costo.conteo_habilitado) === 0
+                        ? 'Ninguno'
+                        : `Conteo ${costo.conteo_habilitado}`}
+                    </span>
+                  </td>
+
+
+                  {/* RESULTADO */}
+
+                  <td>
+                    {costo.resultado ? (
+                      <span
+                        className={
+                          costo.resultado === 'conforme'
+                            ? 'resultado-pill conforme'
+                            : 'resultado-pill diferencia'
+                        }
+                      >
+                        <span>
+                          {costo.resultado === 'conforme'
+                            ? '✓'
+                            : '!'}
+                        </span>
+
+                        {costo.resultado === 'conforme'
+                          ? 'Conforme'
+                          : 'No conforme'}
+                      </span>
+                    ) : (
+                      <span className="resultado-pendiente">
+                        Pendiente
+                      </span>
+                    )}
+                  </td>
+
+
+                  {/* ACCIONES */}
+
+                  <td>
+                    <div className="costos-actions">
+
+                      {/* VER DETALLE */}
+
+                      <button
+                        className="costos-view-button"
+                        onClick={() => verDetalle(costo)}
+                        type="button"
+                        disabled={reiniciando === costo.id}
+                      >
+                        Ver detalle
+                      </button>
+
+
+                      {/* REALIZAR CONTEO */}
+
+                      {[1, 2, 3].includes(
+                        Number(costo.conteo_habilitado)
+                      ) && (
+                        <button
+                          className="costos-admin-count-button"
+                          onClick={() => realizarConteo(costo)}
+                          disabled={
+                            reiniciando === costo.id ||
+                            habilitando === costo.id ||
+                            abriendoConteo === costo.id
+                          }
+                          type="button"
+                        >
+                          {abriendoConteo === costo.id ? (
+                            <>
+                              <span className="button-spinner"></span>
+                              Verificando acceso...
+                            </>
+                          ) : (
+                            <>
+                              <span className="action-icon">✓</span>
+                              Realizar conteo
+                            </>
+                          )}
+                        </button>
+                      )}
+
+
+                      {/* HABILITAR CONTEO 2 */}
+
+                      {Number(costo.conteo_habilitado) === 1 && (
+                        <button
+                          className="costos-count-button"
+                          onClick={() => habilitarConteo2(costo)}
+                          disabled={
+                            habilitando === costo.id ||
+                            reiniciando === costo.id
+                          }
+                          type="button"
+                        >
+                          {habilitando === costo.id ? (
+                            <>
+                              <span className="button-spinner"></span>
+                              Habilitando...
+                            </>
+                          ) : (
+                            <>
+                              Conteo 2
+                              <span>→</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+
+                      {/* HABILITAR CONTEO 3 */}
+
+                      {Number(costo.conteo_habilitado) === 2 && (
+                        <button
+                          className="costos-count-button"
+                          onClick={() => habilitarConteo3(costo)}
+                          disabled={
+                            habilitando === costo.id ||
+                            reiniciando === costo.id
+                          }
+                          type="button"
+                        >
+                          {habilitando === costo.id ? (
+                            <>
+                              <span className="button-spinner"></span>
+                              Habilitando...
+                            </>
+                          ) : (
+                            <>
+                              Conteo 3
+                              <span>→</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+
+                      {/* REINICIAR */}
+
+                      <button
+                        className="costos-reset-button"
+                        onClick={() => manejarReinicio(costo)}
+                        disabled={
+                          reiniciando === costo.id ||
+                          habilitando === costo.id ||
+                          abriendoConteo === costo.id
+                        }
+                        type="button"
+                      >
+                        {reiniciando === costo.id ? (
+                          <>
+                            <span className="button-spinner"></span>
+                            Reiniciando...
+                          </>
+                        ) : (
+                          <>
+                            <span className="action-icon">↻</span>
+                            Reiniciar
+                          </>
+                        )}
+                      </button>
+
+                    </div>
+                  </td>
 
                 </tr>
-
-              </thead>
-
-
-              <tbody>
-
-                {costosFiltrados.map(
-                  costo => (
-
-                    <tr
-                      key={costo.id}
-                    >
-
-
-                      {/* ================================
-                          NÚMERO
-                          ================================= */}
-
-                      <td>
-
-                        <div className="costos-number-cell">
-
-                          <div className="costos-number-icon">
-                            #
-                          </div>
-
-                          <div>
-
-                            <strong>
-                              {costo.numero_costo}
-                            </strong>
-
-                            <span>
-                              Costo registrado
-                            </span>
-
-                          </div>
-
-                        </div>
-
-                      </td>
-
-
-                      {/* ================================
-                          ESTADO
-                          ================================= */}
-
-                      <td>
-
-                        <StatusBadge
-                          estado={costo.estado}
-                        />
-
-                      </td>
-
-
-                      {/* ================================
-                          LÍNEAS
-                          ================================= */}
-
-                      <td>
-
-                        <span className="costos-lines-value">
-
-                          {costo.lineas_count}
-
-                        </span>
-
-                      </td>
-
-
-                      {/* ================================
-                          CONTEO
-                          ================================= */}
-
-                      <td>
-
-                        <span
-                          className={
-                            Number(costo.conteo_habilitado) === 0
-                              ? 'conteo-pill none'
-                              : 'conteo-pill active'
-                          }
-                        >
-
-                          <span className="conteo-pill-dot"></span>
-
-                          {Number(costo.conteo_habilitado) === 0
-                            ? 'Ninguno'
-                            : `Conteo ${costo.conteo_habilitado}`}
-
-                        </span>
-
-                      </td>
-
-
-                      {/* ================================
-                          RESULTADO
-                          ================================= */}
-
-                      <td>
-
-                        {costo.resultado ? (
-
-                          <span
-                            className={
-                              costo.resultado === 'conforme'
-                                ? 'resultado-pill conforme'
-                                : 'resultado-pill diferencia'
-                            }
-                          >
-
-                            <span>
-
-                              {costo.resultado === 'conforme'
-                                ? '✓'
-                                : '!'}
-
-                            </span>
-
-                            {costo.resultado === 'conforme'
-                              ? 'Conforme'
-                              : 'No conforme'}
-
-                          </span>
-
-                        ) : (
-
-                          <span className="resultado-pendiente">
-                            Pendiente
-                          </span>
-
-                        )}
-
-                      </td>
-
-
-                      {/* ================================
-                          ACCIONES
-                          ================================= */}
-
-                      <td>
-
-                        <div className="costos-actions">
-
-
-                          {/* VER DETALLE */}
-
-                          <button
-
-                            className="costos-view-button"
-
-                            onClick={() =>
-                              verDetalle(costo)
-                            }
-
-                            type="button"
-
-                            disabled={
-                              reiniciando === costo.id
-                            }
-
-                          >
-                            Ver detalle
-                          </button>
-
-
-                          {/* REALIZAR CONTEO */}
-
-                          {[1, 2, 3].includes(
-                            Number(
-                              costo.conteo_habilitado
-                            )
-                          ) && (
-
-                            <button
-
-                              className="costos-admin-count-button"
-
-                              onClick={() =>
-                                realizarConteo(costo)
-                              }
-
-                              disabled={
-                                reiniciando === costo.id ||
-                                habilitando === costo.id
-                              }
-
-                              type="button"
-
-                            >
-
-                              <span className="action-icon">
-                                ✓
-                              </span>
-
-                              Realizar conteo
-
-                            </button>
-
-                          )}
-
-
-                          {/* HABILITAR CONTEO 2 */}
-
-                          {Number(
-                            costo.conteo_habilitado
-                          ) === 1 && (
-
-                            <button
-
-                              className="costos-count-button"
-
-                              onClick={() =>
-                                habilitarConteo2(costo)
-                              }
-
-                              disabled={
-                                habilitando === costo.id ||
-                                reiniciando === costo.id
-                              }
-
-                              type="button"
-
-                            >
-
-                              {habilitando === costo.id ? (
-
-                                <>
-
-                                  <span className="button-spinner"></span>
-
-                                  Habilitando...
-
-                                </>
-
-                              ) : (
-
-                                <>
-
-                                  Conteo 2
-
-                                  <span>
-                                    →
-                                  </span>
-
-                                </>
-
-                              )}
-
-                            </button>
-
-                          )}
-
-
-                          {/* HABILITAR CONTEO 3 */}
-
-                          {Number(
-                            costo.conteo_habilitado
-                          ) === 2 && (
-
-                            <button
-
-                              className="costos-count-button"
-
-                              onClick={() =>
-                                habilitarConteo3(costo)
-                              }
-
-                              disabled={
-                                habilitando === costo.id ||
-                                reiniciando === costo.id
-                              }
-
-                              type="button"
-
-                            >
-
-                              {habilitando === costo.id ? (
-
-                                <>
-
-                                  <span className="button-spinner"></span>
-
-                                  Habilitando...
-
-                                </>
-
-                              ) : (
-
-                                <>
-
-                                  Conteo 3
-
-                                  <span>
-                                    →
-                                  </span>
-
-                                </>
-
-                              )}
-
-                            </button>
-
-                          )}
-
-
-                          {/* REINICIAR */}
-
-                          <button
-
-                            className="costos-reset-button"
-
-                            onClick={() =>
-                              manejarReinicio(costo)
-                            }
-
-                            disabled={
-                              reiniciando === costo.id ||
-                              habilitando === costo.id
-                            }
-
-                            type="button"
-
-                          >
-
-                            {reiniciando === costo.id ? (
-
-                              <>
-
-                                <span className="button-spinner"></span>
-
-                                Reiniciando...
-
-                              </>
-
-                            ) : (
-
-                              <>
-
-                                <span className="action-icon">
-                                  ↻
-                                </span>
-
-                                Reiniciar
-
-                              </>
-
-                            )}
-
-                          </button>
-
-
-                        </div>
-
-                      </td>
-
-                    </tr>
-
-                  )
-                )}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
     </section>
-
   )
-
 }
-
 
 export default CostosAdmin
