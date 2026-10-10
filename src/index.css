@@ -1520,3 +1520,97 @@ button { -webkit-tap-highlight-color: transparent; }
 @media(max-width:520px){.admin-dashboard-header{padding:16px;}.admin-dashboard-user{gap:10px;}.admin-dashboard-user-info{flex:1;min-width:0;}.admin-dashboard-user-email{max-width:100%;}.admin-dashboard-header .conexion-indicador{order:0;flex:1 1 100%;}.admin-dashboard-logout{flex:1;}.admin-dashboard-page-heading{padding:18px;gap:16px;}.admin-dashboard-primary-button{min-height:44px;}.app-loading-card{padding:30px 22px;}}
 
 .login-spinner,.button-spinner,.admin-conteo-spinner,.auditor-loading-spinner,.costos-loading-spinner,.conteo-inline-loading-spinner{display:inline-block;flex:0 0 auto;border:3px solid rgba(36,87,214,.16);border-top-color:currentColor;border-radius:50%;animation:uiSpin .75s linear infinite;vertical-align:middle}.login-spinner{width:18px;height:18px;border-color:rgba(255,255,255,.32);border-top-color:#fff}.button-spinner{width:15px;height:15px;border-width:2px}.admin-conteo-spinner,.auditor-loading-spinner,.costos-loading-spinner,.conteo-inline-loading-spinner{width:38px;height:38px;border-width:3px;color:var(--primary)}.admin-conteo-cargando,.auditor-loading-state,.costos-loading-state{display:flex;min-height:220px;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--text-muted)}.admin-conteo-cargando span,.auditor-loading-state span,.costos-loading-state span{font-weight:650}
+
+/* Dimensiones compartidas para estados, resultados y acciones en ambas listas. */
+:is(.costos-table,.auditor-costos-table) {
+  table-layout: fixed;
+  min-width: 1120px;
+}
+
+.costos-table { min-width: 1280px; }
+.auditor-costos-table { min-width: 1200px; }
+
+.costos-table th:nth-child(1), .costos-table td:nth-child(1) { width: 14%; }
+.costos-table th:nth-child(2), .costos-table td:nth-child(2) { width: 15%; }
+.costos-table th:nth-child(3), .costos-table td:nth-child(3) { width: 7%; }
+.costos-table th:nth-child(4), .costos-table td:nth-child(4) { width: 15%; }
+.costos-table th:nth-child(5), .costos-table td:nth-child(5) { width: 15%; }
+.costos-table th:nth-child(6), .costos-table td:nth-child(6) { width: 34%; }
+
+.auditor-costos-table th:nth-child(1), .auditor-costos-table td:nth-child(1) { width: 12%; }
+.auditor-costos-table th:nth-child(2), .auditor-costos-table td:nth-child(2) { width: 8%; }
+.auditor-costos-table th:nth-child(3), .auditor-costos-table td:nth-child(3) { width: 25%; }
+.auditor-costos-table th:nth-child(4), .auditor-costos-table td:nth-child(4) { width: 17%; }
+.auditor-costos-table th:nth-child(5), .auditor-costos-table td:nth-child(5) { width: 12%; }
+.auditor-costos-table th:nth-child(6), .auditor-costos-table td:nth-child(6) { width: 26%; }
+
+:is(.costos-table,.auditor-costos-table) tbody td {
+  height: 76px;
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+
+:is(.status,.estado-badge) {
+  width: 200px;
+  min-width: 200px;
+  min-height: 42px;
+  justify-content: center;
+  padding: 8px 12px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+:is(.resultado-badge,.resultado-pill,.resultado-pendiente) {
+  width: 160px;
+  min-width: 160px;
+  height: 42px;
+  min-height: 42px;
+  justify-content: center;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+:is(.conteo-pill,.conteo-activo,.conteo-cerrado) {
+  width: 132px;
+  min-width: 132px;
+  min-height: 42px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.btn-costo {
+  width: 200px;
+  min-width: 200px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 8px 12px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.costos-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.costos-actions > button {
+  width: 148px;
+  min-width: 148px;
+  min-height: 42px;
+  justify-content: center;
+  padding: 8px 10px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+@media (max-width: 700px) {
+  :is(.costos-table,.auditor-costos-table) tbody td {
+    height: 72px;
+    padding: 10px;
+  }
+}
