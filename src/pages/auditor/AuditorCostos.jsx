@@ -7,7 +7,8 @@ function AuditorCostos({
   costos: costosProp = [],
   onSeleccionar
 }) {
-  const [costos, setCostos] = useState(costosProp)
+  const [costosCargados, setCostosCargados] = useState([])
+  const costos = costosProp.length > 0 ? costosProp : costosCargados
 
   const [loading, setLoading] = useState(
     costosProp.length === 0
@@ -21,30 +22,37 @@ function AuditorCostos({
   // ==========================================================
 
   useEffect(() => {
-    if (
-      Array.isArray(costosProp) &&
-      costosProp.length > 0
-    ) {
-      setCostos(costosProp)
-      setLoading(false)
-      return
+    if (costosProp.length > 0) return
+
+    let activo = true
+    async function cargarCostos() {
+      await Promise.resolve()
+      if (!activo) return
+
+      try {
+        setLoading(true)
+        const data = await obtenerCostosAuditor()
+        if (activo) setCostosCargados(data || [])
+      } catch (error) {
+        console.error('Error cargando costos del auditor:', error)
+      } finally {
+        if (activo) setLoading(false)
+      }
     }
 
     cargarCostos()
-  }, [costosProp])
+    return () => {
+      activo = false
+    }
+  }, [costosProp.length])
 
   async function cargarCostos() {
+    setLoading(true)
     try {
-      setLoading(true)
-
       const data = await obtenerCostosAuditor()
-
-      setCostos(data || [])
+      setCostosCargados(data || [])
     } catch (error) {
-      console.error(
-        'Error cargando costos del auditor:',
-        error
-      )
+      console.error('Error cargando costos del auditor:', error)
     } finally {
       setLoading(false)
     }
@@ -59,6 +67,10 @@ function AuditorCostos({
       .trim()
       .toLowerCase()
       .replace(/[\s-]+/g, '_')
+  }
+
+  function costoConforme(costo) {
+    return obtenerResultadoNormalizado(costo?.resultado) === 'conforme'
   }
 
   // ==========================================================
@@ -83,7 +95,7 @@ function AuditorCostos({
 
   function seleccionarCosto(costo) {
     // No permitir ingresar a costos terminados.
-    if (costo.estado === 'terminado') {
+    if (costo.estado === 'terminado' || costoConforme(costo)) {
       const siguienteConteo =
         Number(costo.conteo_habilitado || 1) + 1
 
@@ -168,6 +180,10 @@ function AuditorCostos({
   // ==========================================================
 
   function obtenerEstadoTexto(costo) {
+    if (costoConforme(costo)) {
+      return 'Conforme'
+    }
+
     if (costo.estado === 'terminado') {
       if (
         obtenerResultadoNormalizado(costo.resultado) ===
@@ -196,6 +212,10 @@ function AuditorCostos({
   // ==========================================================
 
   function obtenerTextoAccion(costo) {
+    if (costoConforme(costo)) {
+      return 'Costo conforme'
+    }
+
     if (costo.estado === 'terminado') {
       if (
         obtenerResultadoNormalizado(costo.resultado) ===
@@ -481,8 +501,12 @@ function AuditorCostos({
 
               <tbody>
                 {costosFiltrados.map(costo => {
+                  const resultadoOriginal =
+                    obtenerResultadoNormalizado(costo.resultado)
+
                   const terminado =
-                    costo.estado === 'terminado'
+                    costo.estado === 'terminado' ||
+                    resultadoOriginal === 'conforme'
 
                   const ocupadoPorOtro =
                     Boolean(costo.bloqueado_por_otro)
@@ -509,21 +533,18 @@ function AuditorCostos({
                   // RESULTADO DEL ÚLTIMO CONTEO
                   // ==================================================
 
-                  const resultadoOriginal =
-                    obtenerResultadoNormalizado(costo.resultado)
-
                   const lineasConDiferencia =
                     Number(costo.lineas_con_diferencia || 0)
 
                   const resultado =
-                    terminado
+                    resultadoOriginal === 'conforme' ||
+                    resultadoOriginal === 'no_conforme'
                       ? resultadoOriginal
-                      : lineasConDiferencia > 0
-                        ? 'no_conforme'
-                        : resultadoOriginal === 'conforme' ||
-                            resultadoOriginal === 'no_conforme'
-                          ? resultadoOriginal
-                          : 'pendiente'
+                      : costo.conteo_completo
+                        ? lineasConDiferencia > 0
+                          ? 'no_conforme'
+                          : 'conforme'
+                        : 'pendiente'
 
                   return (
                     <tr
@@ -564,7 +585,7 @@ function AuditorCostos({
                               : esperandoSiguienteConteo
                                 ? 'estado-badge pendiente'
                                 : ocupadoPorOtro
-                                  ? 'estado-badge proceso'
+                                  ? 'estado-badge ocupado'
                                   : propio
                                     ? 'estado-badge proceso'
                                     : costo.estado === 'en_proceso'
@@ -601,7 +622,7 @@ function AuditorCostos({
                           </span>
                         ) : (
                           <span className="resultado-pendiente">
-                            Pendiente
+                            {costo.numero_ultimo_conteo ? 'Pendiente' : 'Sin conteo'}
                           </span>
                         )}
                       </td>

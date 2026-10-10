@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
 
@@ -127,18 +127,20 @@ function CostosAdmin({ usuarioId }) {
   const [reiniciando, setReiniciando] = useState(null)
   const [abriendoConteo, setAbriendoConteo] = useState(null)
   const [restauracionRealizada, setRestauracionRealizada] = useState(false)
+  const [aviso, setAviso] = useState(null)
+  const [costoPorReiniciar, setCostoPorReiniciar] = useState(null)
 
+
+  function mostrarAviso(mensaje) {
+    setAviso({ mensaje: String(mensaje), tipo: /no se pudo|no puedes|error/i.test(String(mensaje)) ? 'error' : 'success' })
+  }
 
   // ==========================================================
   // CARGAR COSTOS
   // ==========================================================
 
-  useEffect(() => {
-    cargarCostos()
-  }, [])
-
-
-  async function cargarCostos() {
+  const cargarCostos = useCallback(async () => {
+    await Promise.resolve()
     setLoading(true)
 
     try {
@@ -156,13 +158,118 @@ function CostosAdmin({ usuarioId }) {
         throw error
       }
 
-      setCostos(data || [])
+      const costosActualizados = [...(data || [])]
+      const resultadosPersistidos = new Map(costosActualizados.map(costo => [
+        String(costo.id),
+        (() => {
+          const resultado = String(costo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+          return resultado === 'diferencia' ? 'no_conforme' : resultado
+        })()
+      ]))
+      for (const costo of costosActualizados) {
+        costo.resultado = null
+        costo.conteos_registrados = []
+        costo.numero_ultimo_conteo = null
+      }
+      const idsCostos = costosActualizados.map(costo => costo.id)
+
+      if (idsCostos.length) {
+        const { data: detalles, error: errorDetalles } = await supabase
+          .from('detalle_costos')
+          .select('id, costo_id')
+          .in('costo_id', idsCostos)
+        if (errorDetalles) throw errorDetalles
+
+        const detallePorId = new Map((detalles || []).map(detalle => [String(detalle.id), String(detalle.costo_id)]))
+        const idsDetalles = (detalles || []).map(detalle => detalle.id)
+        if (idsDetalles.length) {
+          const { data: conteos, error: errorConteos } = await supabase
+            .from('conteos')
+            .select('detalle_costo_id, numero_conteo, resultado')
+            .in('detalle_costo_id', idsDetalles)
+          if (errorConteos) throw errorConteos
+
+          const resumenPorCosto = new Map()
+          const conteosRegistradosPorCosto = new Map()
+          for (const conteo of conteos || []) {
+            const costoId = detallePorId.get(String(conteo.detalle_costo_id))
+            if (!costoId) continue
+            const numero = Number(conteo.numero_conteo)
+            if (!conteosRegistradosPorCosto.has(costoId)) conteosRegistradosPorCosto.set(costoId, new Set())
+            conteosRegistradosPorCosto.get(costoId).add(numero)
+            const resumen = resumenPorCosto.get(costoId)
+            if (!resumen || numero > resumen.numero) {
+              resumenPorCosto.set(costoId, { numero, lineas: 0, diferencias: 0, resultados: 0 })
+            }
+            const ultimo = resumenPorCosto.get(costoId)
+            if (numero !== ultimo.numero) continue
+            ultimo.lineas += 1
+            const resultadoConteo = String(conteo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+            if (resultadoConteo === 'diferencia' || resultadoConteo === 'no_conforme') {
+              ultimo.diferencias += 1
+              ultimo.resultados += 1
+            }
+            if (resultadoConteo === 'conforme') ultimo.resultados += 1
+          }
+
+          for (const costo of costosActualizados) {
+            const clave = String(costo.id)
+            const resumen = resumenPorCosto.get(clave)
+            const registrados = conteosRegistradosPorCosto.get(clave)
+            costo.conteos_registrados = registrados ? [...registrados] : []
+            costo.numero_ultimo_conteo = resumen?.numero ?? null
+            const resultadoDerivado = resumen &&
+              resumen.lineas === Number(costo.lineas_count) &&
+              resumen.resultados === Number(costo.lineas_count)
+              ? (resumen.diferencias > 0 ? 'no_conforme' : 'conforme')
+              : null
+            const resultadoGuardado = resultadosPersistidos.get(clave)
+            costo.resultado = resultadoDerivado || (
+              registrados?.size > 0 && String(costo.estado || '').toLowerCase() === 'terminado'
+              && ['conforme', 'no_conforme'].includes(resultadoGuardado)
+                ? resultadoGuardado
+                : null
+            )
+
+            // El admin puede leer todas las líneas. Publicar el resultado
+            // completo en la fila compartida para que otros auditores lo vean
+            // aunque sus permisos no incluyan el detalle de conteos.
+            if (resultadoDerivado && resultadoGuardado !== resultadoDerivado) {
+              const resultadoPersistido = resultadoDerivado === 'no_conforme'
+                ? 'diferencia'
+                : resultadoDerivado
+              const { error: errorPublicacion } = await supabase
+                .from('costos')
+                .update({ resultado: resultadoPersistido })
+                .eq('id', costo.id)
+
+              if (errorPublicacion) {
+                console.error('No se pudo compartir el resultado calculado:', errorPublicacion)
+              }
+            }
+          }
+        }
+      }
+
+      setCostos(costosActualizados)
+      localStorage.setItem('validacion-costos-admin-' + usuarioId + '-costos-offline', JSON.stringify(costosActualizados))
     } catch (error) {
       console.error('Error cargando costos:', error)
+      try {
+        const cache = localStorage.getItem('validacion-costos-admin-' + usuarioId + '-costos-offline')
+        if (cache) setCostos(JSON.parse(cache))
+      } catch (errorCache) {
+        console.error('No se pudo recuperar la lista local:', errorCache)
+      }
     } finally {
       setLoading(false)
     }
-  }
+  }, [usuarioId])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => cargarCostos(), 0)
+    return () => window.clearTimeout(timer)
+  }, [cargarCostos])
 
 
   // ==========================================================
@@ -170,6 +277,10 @@ function CostosAdmin({ usuarioId }) {
   // ==========================================================
 
   useEffect(() => {
+    let activo = true
+    async function restaurarSesion() {
+      await Promise.resolve()
+      if (!activo) return
     if (
       !usuarioId ||
       loading ||
@@ -275,13 +386,14 @@ function CostosAdmin({ usuarioId }) {
       // Evitar que el efecto vuelva a iniciar otra restauración.
       setRestauracionRealizada(true)
 
+      const restaurarConteoLocal = () => setConteoAdmin({ costo, numeroConteo })
+      if (!navigator.onLine) {
+        restaurarConteoLocal()
+        return
+      }
+
       iniciarCosto(costo.id)
-        .then(() => {
-          setConteoAdmin({
-            costo,
-            numeroConteo
-          })
-        })
+        .then(restaurarConteoLocal)
         .catch(async error => {
           console.error(
             'No se pudo restaurar el conteo del administrador:',
@@ -290,7 +402,7 @@ function CostosAdmin({ usuarioId }) {
 
           limpiarSesionAdmin(usuarioId)
 
-          alert(
+          mostrarAviso(
             error?.message ||
             'No puedes continuar este conteo porque está asignado a otro usuario.'
           )
@@ -308,11 +420,18 @@ function CostosAdmin({ usuarioId }) {
 
     limpiarSesionAdmin(usuarioId)
     setRestauracionRealizada(true)
+    }
+
+    restaurarSesion()
+    return () => {
+      activo = false
+    }
   }, [
     usuarioId,
     loading,
     costos,
-    restauracionRealizada
+    restauracionRealizada,
+    cargarCostos
   ])
 
 
@@ -325,7 +444,7 @@ function CostosAdmin({ usuarioId }) {
     const numeroConteo = Number(costo.conteo_habilitado)
 
     if (![1, 2, 3].includes(numeroConteo)) {
-      alert(
+      mostrarAviso(
         'Este costo no tiene un conteo habilitado.'
       )
 
@@ -358,7 +477,7 @@ function CostosAdmin({ usuarioId }) {
         error
       )
 
-      alert(
+      mostrarAviso(
         error?.message ||
         'No puedes abrir este costo porque está asignado a otro usuario.'
       )
@@ -374,11 +493,32 @@ function CostosAdmin({ usuarioId }) {
   // CONTEO ADMIN GUARDADO
   // ==========================================================
 
-  async function manejarConteoGuardado() {
+  async function manejarConteoGuardado(resultadoGuardado) {
+    const resultado = String(resultadoGuardado?.resultado || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+
     limpiarSesionAdmin(usuarioId)
     setConteoAdmin(null)
 
     await cargarCostos()
+
+    if (resultado === 'conforme' || resultado === 'no_conforme') {
+      setCostos(actuales => {
+        const actualizados = actuales.map(costo =>
+          Number(costo.id) === Number(resultadoGuardado.costoId)
+            ? { ...costo, resultado }
+            : costo
+        )
+        try {
+          localStorage.setItem(`validacion-costos-admin-${usuarioId}-costos-offline`, JSON.stringify(actualizados))
+        } catch (errorCache) {
+          console.error('No se pudo actualizar la lista local:', errorCache)
+        }
+        return actualizados
+      })
+    }
   }
 
 
@@ -479,7 +619,7 @@ function CostosAdmin({ usuarioId }) {
     } catch (error) {
       console.error(error)
 
-      alert(
+      mostrarAviso(
         error.message ||
         'No se pudo habilitar el Conteo 2.'
       )
@@ -549,7 +689,7 @@ function CostosAdmin({ usuarioId }) {
     } catch (error) {
       console.error(error)
 
-      alert(
+      mostrarAviso(
         error.message ||
         'No se pudo habilitar el Conteo 3.'
       )
@@ -563,18 +703,14 @@ function CostosAdmin({ usuarioId }) {
   // REINICIAR COSTO
   // ==========================================================
 
-  async function manejarReinicio(costo) {
-    const confirmado = window.confirm(
-      `¿Reiniciar el costo ${costo.numero_costo}?\n\n` +
-      `Se eliminarán los conteos y no manifestados ` +
-      `realizados hasta ahora y se liberará el costo ` +
-      `para que otro auditor pueda trabajarlo.\n\n` +
-      `Los productos originales del costo NO serán eliminados.`
-    )
+  function manejarReinicio(costo) {
+    setCostoPorReiniciar(costo)
+  }
 
-    if (!confirmado) {
-      return
-    }
+  async function confirmarReinicio() {
+    const costo = costoPorReiniciar
+    if (!costo) return
+    setCostoPorReiniciar(null)
 
     try {
       setReiniciando(costo.id)
@@ -592,7 +728,7 @@ function CostosAdmin({ usuarioId }) {
         setConteoAdmin(null)
       }
 
-      alert(
+      mostrarAviso(
         `El costo ${costo.numero_costo} fue reiniciado correctamente.`
       )
 
@@ -603,7 +739,7 @@ function CostosAdmin({ usuarioId }) {
         error
       )
 
-      alert(
+      mostrarAviso(
         error?.message ||
         'No se pudo reiniciar el costo.'
       )
@@ -666,15 +802,21 @@ function CostosAdmin({ usuarioId }) {
   const totalCostos = costos.length
 
   const costosPendientes = costos.filter(
-    costo => costo.estado === 'pendiente'
+    costo =>
+      costo.estado === 'pendiente' &&
+      String(costo.resultado || '').trim().toLowerCase() !== 'conforme'
   ).length
 
   const costosEnProceso = costos.filter(
-    costo => costo.estado === 'en_proceso'
+    costo =>
+      costo.estado === 'en_proceso' &&
+      String(costo.resultado || '').trim().toLowerCase() !== 'conforme'
   ).length
 
   const costosTerminados = costos.filter(
-    costo => costo.estado === 'terminado'
+    costo =>
+      costo.estado === 'terminado' ||
+      String(costo.resultado || '').trim().toLowerCase() === 'conforme'
   ).length
 
 
@@ -685,6 +827,7 @@ function CostosAdmin({ usuarioId }) {
   if (conteoAdmin) {
     return (
       <ConteoAdmin
+        usuarioId={usuarioId}
         costo={conteoAdmin.costo}
         numeroConteo={conteoAdmin.numeroConteo}
         onGuardado={manejarConteoGuardado}
@@ -891,7 +1034,13 @@ function CostosAdmin({ usuarioId }) {
                   {/* ESTADO */}
 
                   <td>
-                    <StatusBadge estado={costo.estado} />
+                    <StatusBadge
+                      estado={
+                        String(costo.resultado || '').trim().toLowerCase() === 'conforme'
+                          ? 'conforme'
+                          : costo.estado
+                      }
+                    />
                   </td>
 
 
@@ -946,7 +1095,7 @@ function CostosAdmin({ usuarioId }) {
                       </span>
                     ) : (
                       <span className="resultado-pendiente">
-                        Pendiente
+                        {costo.numero_ultimo_conteo ? 'Pendiente' : 'Sin conteo'}
                       </span>
                     )}
                   </td>
@@ -973,7 +1122,7 @@ function CostosAdmin({ usuarioId }) {
 
                       {[1, 2, 3].includes(
                         Number(costo.conteo_habilitado)
-                      ) && (
+                      ) && String(costo.resultado || '').trim().toLowerCase() !== 'conforme' && (
                         <button
                           className="costos-admin-count-button"
                           onClick={() => realizarConteo(costo)}
@@ -1001,7 +1150,7 @@ function CostosAdmin({ usuarioId }) {
 
                       {/* HABILITAR CONTEO 2 */}
 
-                      {Number(costo.conteo_habilitado) === 1 && (
+                      {Number(costo.conteo_habilitado) === 1 && String(costo.resultado || '').trim().toLowerCase() !== 'conforme' && (
                         <button
                           className="costos-count-button"
                           onClick={() => habilitarConteo2(costo)}
@@ -1028,7 +1177,7 @@ function CostosAdmin({ usuarioId }) {
 
                       {/* HABILITAR CONTEO 3 */}
 
-                      {Number(costo.conteo_habilitado) === 2 && (
+                      {Number(costo.conteo_habilitado) === 2 && String(costo.resultado || '').trim().toLowerCase() !== 'conforme' && (
                         <button
                           className="costos-count-button"
                           onClick={() => habilitarConteo3(costo)}
@@ -1088,6 +1237,29 @@ function CostosAdmin({ usuarioId }) {
         </div>
       )}
 
+      {aviso && (
+        <div className="ui-notice-backdrop" role="presentation" onClick={() => setAviso(null)}>
+          <section className="ui-notice" role="alertdialog" aria-modal="true" aria-labelledby="ui-notice-title" onClick={event => event.stopPropagation()}>
+            <span className={`ui-notice-icon ui-notice-${aviso.tipo}`} aria-hidden="true">{aviso.tipo === 'error' ? '!' : '✓'}</span>
+            <h2 id="ui-notice-title">{aviso.tipo === 'error' ? 'No se pudo completar' : 'Operación completada'}</h2>
+            <p>{aviso.mensaje}</p>
+            <button type="button" className="ui-notice-button" onClick={() => setAviso(null)}>Entendido</button>
+          </section>
+        </div>
+      )}
+      {costoPorReiniciar && (
+        <div className="ui-notice-backdrop" role="presentation">
+          <section className="ui-notice" role="alertdialog" aria-modal="true" aria-labelledby="ui-confirm-title">
+            <span className="ui-notice-icon ui-notice-warning" aria-hidden="true">!</span>
+            <h2 id="ui-confirm-title">¿Reiniciar el costo {costoPorReiniciar.numero_costo}?</h2>
+            <p>Se eliminarán los conteos y no manifestados realizados hasta ahora, y se liberará el costo para otro auditor. Los productos originales se conservarán.</p>
+            <div className="ui-notice-actions">
+              <button type="button" className="ui-notice-secondary" onClick={() => setCostoPorReiniciar(null)}>Cancelar</button>
+              <button type="button" className="ui-notice-button ui-notice-danger" onClick={confirmarReinicio}>Reiniciar costo</button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   )
 }

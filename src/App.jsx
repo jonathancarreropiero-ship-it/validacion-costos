@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 
 import Login from './pages/Login'
@@ -34,14 +34,51 @@ function App() {
     setRoleLoading
   ] = useState(false)
 
+  const comprobarSesion = useCallback(async () => {
+    try {
+      const {
+        data: { session: sessionActual },
+        error
+      } = await supabase.auth.getSession()
+
+      if (error) {
+        console.error('Error obteniendo sesión:', error)
+        setSession(null)
+        return
+      }
+
+      setSession(sessionActual)
+    } catch (error) {
+      console.error('Error comprobando sesión:', error)
+      setSession(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const cargarRol = useCallback(async () => {
+    try {
+      setRoleLoading(true)
+      console.log('Buscando rol del usuario...')
+
+      const rolUsuario = await obtenerRolUsuario()
+      console.log('Rol encontrado:', rolUsuario)
+      setRole(rolUsuario)
+    } catch (error) {
+      console.error('Error obteniendo rol:', error)
+      setRole(null)
+    } finally {
+      setRoleLoading(false)
+    }
+  }, [])
+
 
   // ========================================================
   // SESIÓN DE SUPABASE
   // ========================================================
 
   useEffect(() => {
-
-    comprobarSesion()
+    const timer = window.setTimeout(comprobarSesion, 0)
 
     const {
       data: {
@@ -58,14 +95,20 @@ function App() {
         setSession(
           sessionActual
         )
+
+        if (!sessionActual) {
+          setRole(null)
+          setRoleLoading(false)
+        }
       }
     )
 
     return () => {
+      window.clearTimeout(timer)
       subscription.unsubscribe()
     }
 
-  }, [])
+  }, [comprobarSesion])
 
 
   // ========================================================
@@ -74,110 +117,12 @@ function App() {
 
   useEffect(() => {
 
-    if (!session) {
+    if (!session) return
 
-      setRole(null)
-      setRoleLoading(false)
+    const timer = window.setTimeout(cargarRol, 0)
+    return () => window.clearTimeout(timer)
 
-      return
-    }
-
-    cargarRol()
-
-  }, [session])
-
-
-  // ========================================================
-  // COMPROBAR SESIÓN
-  // ========================================================
-
-  async function comprobarSesion() {
-
-    try {
-
-      const {
-        data: {
-          session: sessionActual
-        },
-        error
-      } = await supabase.auth.getSession()
-
-
-      if (error) {
-
-        console.error(
-          'Error obteniendo sesión:',
-          error
-        )
-
-        setSession(null)
-
-        return
-      }
-
-
-      setSession(
-        sessionActual
-      )
-
-    } catch (error) {
-
-      console.error(
-        'Error comprobando sesión:',
-        error
-      )
-
-      setSession(null)
-
-    } finally {
-
-      setLoading(false)
-
-    }
-  }
-
-
-  // ========================================================
-  // CARGAR ROL
-  // ========================================================
-
-  async function cargarRol() {
-
-    try {
-
-      setRoleLoading(true)
-
-      console.log(
-        'Buscando rol del usuario...'
-      )
-
-      const rolUsuario =
-        await obtenerRolUsuario()
-
-      console.log(
-        'Rol encontrado:',
-        rolUsuario
-      )
-
-      setRole(
-        rolUsuario
-      )
-
-    } catch (error) {
-
-      console.error(
-        'Error obteniendo rol:',
-        error
-      )
-
-      setRole(null)
-
-    } finally {
-
-      setRoleLoading(false)
-
-    }
-  }
+  }, [session, cargarRol])
 
 
   // ========================================================

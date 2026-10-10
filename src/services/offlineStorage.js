@@ -807,11 +807,6 @@ export async function limpiarSesionActual(
         STORE_COSTOS
       )
 
-    const detalles =
-      transaction.objectStore(
-        STORE_DETALLES
-      )
-
     auditorias.getAll().onsuccess = event => {
 
       const registros =

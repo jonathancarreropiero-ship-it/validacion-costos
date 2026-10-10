@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
 
@@ -19,6 +19,8 @@ import {
 
 import ConteoAuditor from './ConteoAuditor'
 import AuditorCostos from './AuditorCostos'
+import ValidationNotice from '../../components/ValidationNotice'
+import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
 
 // ==========================================================
 // BORRADOR GENERAL
@@ -26,6 +28,10 @@ import AuditorCostos from './AuditorCostos'
 
 function obtenerClaveBorradorGeneral(usuarioId, costoId, numeroConteo) {
   return `validacion-costos-usuario-${usuarioId}-costo-${costoId}-conteo-${numeroConteo}`
+}
+
+function obtenerClaveBorradorNoManifestados(usuarioId, costoId, numeroConteo) {
+  return `${obtenerClaveBorradorGeneral(usuarioId, costoId, numeroConteo)}-no-manifestados`
 }
 
 function obtenerClaveSesion(usuarioId) {
@@ -96,6 +102,42 @@ function cargarBorradorGeneral(usuarioId, costoId, numeroConteo) {
   }
 }
 
+function guardarNoManifestadosLocal(usuarioId, costoId, numeroConteo, datos) {
+  if (!usuarioId || !costoId || !numeroConteo) return false
+
+  try {
+    localStorage.setItem(
+      obtenerClaveBorradorNoManifestados(usuarioId, costoId, numeroConteo),
+      JSON.stringify({ usuarioId, costoId, numeroConteo, ...datos, updatedAt: new Date().toISOString() })
+    )
+    return true
+  } catch (error) {
+    console.error('No se pudieron guardar los no manifestados localmente:', error)
+    return false
+  }
+}
+
+function cargarNoManifestadosLocal(usuarioId, costoId, numeroConteo) {
+  if (!usuarioId || !costoId || !numeroConteo) return null
+
+  try {
+    const guardado = localStorage.getItem(
+      obtenerClaveBorradorNoManifestados(usuarioId, costoId, numeroConteo)
+    )
+    if (!guardado) return null
+    const borrador = JSON.parse(guardado)
+    if (
+      String(borrador?.usuarioId) !== String(usuarioId) ||
+      Number(borrador?.costoId) !== Number(costoId) ||
+      Number(borrador?.numeroConteo) !== Number(numeroConteo)
+    ) return null
+    return borrador
+  } catch (error) {
+    console.error('No se pudieron recuperar los no manifestados locales:', error)
+    return null
+  }
+}
+
 // ==========================================================
 // GUARDAR SESIÓN
 // ==========================================================
@@ -162,7 +204,7 @@ function limpiarSesionActual(usuarioId) {
 // LIMPIAR BORRADORES DE UN CONTEO
 // ==========================================================
 
-function limpiarBorradoresCosto(usuarioId, costoId, numeroConteo) {
+function limpiarBorradoresCosto(usuarioId, costoId, numeroConteo, opciones = {}) {
   if (!usuarioId || !costoId || !numeroConteo) return
 
   try {
@@ -193,6 +235,11 @@ function limpiarBorradoresCosto(usuarioId, costoId, numeroConteo) {
         numeroConteo
       )
     )
+    if (!opciones.conservarNoManifestados) {
+      localStorage.removeItem(
+        obtenerClaveBorradorNoManifestados(usuarioId, costoId, numeroConteo)
+      )
+    }
   } catch (error) {
     console.error('No se pudieron limpiar los borradores:', error)
   }
@@ -244,7 +291,7 @@ function IndicadorConexion({ conexionOnline, pendientesOffline }) {
 // VENTANA DE RESULTADO DEL CONTEO
 // ==========================================================
 
-function ModalResultadoConteo({ resultado, onCerrar }) {
+function ModalResultadoConteo({ resultado, onCerrar, onReintentar, reintentando }) {
   if (!resultado) return null
 
   const esConforme = resultado.resultado === 'conforme'
@@ -434,6 +481,29 @@ function ModalResultadoConteo({ resultado, onCerrar }) {
           </div>
         )}
 
+        {resultado.advertencia && onReintentar && (
+          <button
+            type="button"
+            onClick={onReintentar}
+            disabled={reintentando}
+            style={{
+              width: '100%',
+              border: '1px solid #f59e0b',
+              borderRadius: '12px',
+              padding: '12px 18px',
+              background: '#fffbeb',
+              color: '#92400e',
+              fontSize: '14px',
+              fontWeight: 800,
+              cursor: reintentando ? 'wait' : 'pointer',
+              minHeight: '46px',
+              marginBottom: '10px'
+            }}
+          >
+            {reintentando ? 'Reintentando guardado...' : 'Reintentar guardado de no manifestados'}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onCerrar}
@@ -463,7 +533,9 @@ function ModalResultadoConteo({ resultado, onCerrar }) {
 // ==========================================================
 
 function AuditorDashboard() {
+  const sesionActualRef = useRef(null)
   const [usuarioId, setUsuarioId] = useState(null)
+  const [usuarioNombre, setUsuarioNombre] = useState('Auditor')
   const [costos, setCostos] = useState([])
   const [costoSeleccionado, setCostoSeleccionado] = useState(null)
   const [detalles, setDetalles] = useState([])
@@ -488,6 +560,8 @@ function AuditorDashboard() {
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [resultadoGuardado, setResultadoGuardado] = useState(null)
+  const [noManifestadosPendientes, setNoManifestadosPendientes] = useState(null)
+  const [reintentandoNoManifestados, setReintentandoNoManifestados] = useState(false)
 
   const [conexionOnline, setConexionOnline] = useState(estaOnline())
   const [pendientesOffline, setPendientesOffline] = useState(0)
@@ -523,7 +597,7 @@ function AuditorDashboard() {
       const {
         data,
         error: errorUsuario
-      } = await supabase.auth.getUser()
+      } = await supabase.auth.getSession()
 
       if (errorUsuario) {
         console.error(errorUsuario)
@@ -532,17 +606,57 @@ function AuditorDashboard() {
         return
       }
 
-      if (!data?.user?.id) {
+      const user = data?.session?.user
+      if (!user?.id) {
         setError('No se encontró una sesión activa.')
         setLoading(false)
         return
       }
 
-      setUsuarioId(data.user.id)
+      setUsuarioId(user.id)
+      setUsuarioNombre(user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Auditor')
     }
 
     obtenerUsuario()
   }, [])
+
+  useEffect(() => {
+    if (!usuarioId || noManifestadosPendientes) return
+
+    let activo = true
+    async function restaurarPendiente() {
+      await Promise.resolve()
+      const prefijo = `validacion-costos-usuario-${usuarioId}-costo-`
+      for (let indice = 0; indice < localStorage.length; indice += 1) {
+        const clave = localStorage.key(indice)
+        if (!clave?.startsWith(prefijo) || !clave.endsWith('-no-manifestados-pendiente')) continue
+
+        try {
+          const pendiente = JSON.parse(localStorage.getItem(clave) || 'null')
+          const borrador = cargarNoManifestadosLocal(
+            usuarioId,
+            pendiente?.costoId,
+            pendiente?.numeroConteo
+          )
+          if (activo && borrador) {
+            setNoManifestadosPendientes({
+              costoId: pendiente.costoId,
+              numeroConteo: pendiente.numeroConteo,
+              registros: Array.isArray(borrador.noManifestados) ? borrador.noManifestados : []
+            })
+            break
+          }
+        } catch (error) {
+          console.error('No se pudo recuperar la sincronización pendiente:', error)
+        }
+      }
+    }
+    restaurarPendiente()
+
+    return () => {
+      activo = false
+    }
+  }, [usuarioId, noManifestadosPendientes])
 
   // ==========================================================
   // DETECTAR CONEXIÓN
@@ -580,31 +694,36 @@ function AuditorDashboard() {
   // CARGAR COSTOS
   // ==========================================================
 
-  useEffect(() => {
-    if (!usuarioId) return
-    cargarCostos()
-  }, [usuarioId])
-
-  async function cargarCostos() {
+  const cargarCostos = useCallback(async () => {
+    await Promise.resolve()
     try {
       setLoading(true)
       setError('')
 
       const datos = await obtenerCostosAuditor()
       setCostos(datos || [])
+      localStorage.setItem('validacion-costos-auditor-' + usuarioId + '-costos-offline', JSON.stringify(datos || []))
     } catch (err) {
       console.error(err)
-      setError(err?.message || 'No se pudieron cargar los costos.')
+      const cacheLocal = localStorage.getItem('validacion-costos-auditor-' + usuarioId + '-costos-offline')
+      if (cacheLocal) { setCostos(JSON.parse(cacheLocal)); setError('Sin conexión: costos recuperados desde este equipo.') }
+      else setError(err?.message || 'No se pudieron cargar los costos.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [usuarioId])
+
+  useEffect(() => {
+    if (!usuarioId) return
+    const timer = window.setTimeout(() => cargarCostos(), 0)
+    return () => window.clearTimeout(timer)
+  }, [usuarioId, cargarCostos])
 
   // ==========================================================
   // SELECCIONAR COSTO
   // ==========================================================
 
-  async function seleccionarCosto(costo, opciones = {}) {
+  const seleccionarCosto = useCallback(async (costo, opciones = {}) => {
     try {
       setError('')
       setMensaje('')
@@ -620,13 +739,14 @@ function AuditorDashboard() {
         throw new Error('El costo no tiene un conteo habilitado.')
       }
 
-      try {
-        await iniciarCosto(costo.id)
-      } catch (errorInicio) {
-        console.error('Error iniciando el costo:', errorInicio)
-        throw new Error(
-          errorInicio?.message || 'No se pudo iniciar el costo.'
-        )
+      if (conexionOnline) {
+        try { await iniciarCosto(costo.id) } catch (errorInicio) {
+          console.error('Error iniciando el costo:', errorInicio)
+          throw new Error(errorInicio?.message || 'No se pudo iniciar el costo.', { cause: errorInicio })
+        }
+      } else {
+        const sesionLocal = cargarSesionActual(usuarioId)
+        if (Number(sesionLocal?.costoId) !== Number(costo.id) || Number(sesionLocal?.numeroConteo) !== numeroConteo) throw new Error('Sin conexión solo puedes retomar el costo ya iniciado en este equipo.')
       }
 
       setCostoSeleccionado(costo)
@@ -639,11 +759,10 @@ function AuditorDashboard() {
       setBusqueda(opciones.busqueda || '')
       setLoadingDetalles(true)
 
-      const datos = await obtenerDetallesAuditor(
-        costo.id,
-        numeroConteo
-      )
-
+      const claveDetallesOffline = 'validacion-costos-auditor-' + usuarioId + '-' + costo.id + '-' + numeroConteo + '-detalles'
+      let datos
+      try { datos = await obtenerDetallesAuditor(costo.id, numeroConteo); localStorage.setItem(claveDetallesOffline, JSON.stringify(datos || [])) }
+      catch (errorDetalles) { const local = !conexionOnline ? localStorage.getItem(claveDetallesOffline) : null; if (!local) throw errorDetalles; datos = JSON.parse(local) }
       setDetalles(datos || [])
 
       const borrador = cargarBorradorGeneral(
@@ -658,6 +777,30 @@ function AuditorDashboard() {
             ? borrador.noManifestados
             : []
         )
+        if (borrador.nuevoNoManifestado) {
+          setNuevoNoManifestado(borrador.nuevoNoManifestado)
+        }
+        setBorradorGuardado(true)
+      }
+
+      const borradorNoManifestados = cargarNoManifestadosLocal(
+        usuarioId,
+        costo.id,
+        numeroConteo
+      )
+      if (borradorNoManifestados) {
+        setNoManifestados(
+          Array.isArray(borradorNoManifestados.noManifestados)
+            ? borradorNoManifestados.noManifestados
+            : []
+        )
+        setNuevoNoManifestado(
+          borradorNoManifestados.nuevoNoManifestado || {
+            sku: '',
+            cantidad: '',
+            observacion: ''
+          }
+        )
         setBorradorGuardado(true)
       }
 
@@ -667,6 +810,12 @@ function AuditorDashboard() {
         busqueda: opciones.busqueda || '',
         filtroResultado: opciones.filtroResultado || 'todos'
       })
+      sesionActualRef.current = {
+        costoId: costo.id,
+        numeroConteo,
+        busqueda: opciones.busqueda || '',
+        filtroResultado: opciones.filtroResultado || 'todos'
+      }
     } catch (err) {
       console.error(err)
       setError(err?.message || 'No se pudo abrir el costo.')
@@ -674,7 +823,7 @@ function AuditorDashboard() {
     } finally {
       setLoadingDetalles(false)
     }
-  }
+  }, [conexionOnline, usuarioId])
 
   // ==========================================================
   // RENOVAR BLOQUEO
@@ -719,6 +868,10 @@ function AuditorDashboard() {
   // ==========================================================
 
   useEffect(() => {
+    let activo = true
+    async function restaurarSesion() {
+      await Promise.resolve()
+      if (!activo) return
     if (
       !usuarioId ||
       costos.length === 0 ||
@@ -759,7 +912,13 @@ function AuditorDashboard() {
       busqueda: sesion.busqueda || '',
       filtroResultado: sesion.filtroResultado || 'todos'
     })
-  }, [usuarioId, costos, restauracionRealizada])
+    }
+
+    restaurarSesion()
+    return () => {
+      activo = false
+    }
+  }, [usuarioId, costos, restauracionRealizada, seleccionarCosto])
 
   // ==========================================================
   // VOLVER A COSTOS
@@ -773,6 +932,7 @@ function AuditorDashboard() {
     setNoManifestados([])
     setBusqueda('')
     setFiltroResultado('todos')
+    sesionActualRef.current = null
     limpiarSesionActual(usuarioId)
   }
 
@@ -793,7 +953,7 @@ function AuditorDashboard() {
   // MANEJAR CAMBIO EN CONTEO
   // ==========================================================
 
-  function manejarCambio(datos) {
+  const manejarCambio = useCallback((datos) => {
     if (!datos?.detalleId) return
 
     setBorradores(anterior => ({
@@ -809,15 +969,10 @@ function AuditorDashboard() {
 
     setBorradorGuardado(true)
 
-    if (costoSeleccionado) {
-      guardarSesionActual(usuarioId, {
-        costoId: costoSeleccionado.id,
-        numeroConteo: Number(costoSeleccionado.conteo_habilitado),
-        busqueda,
-        filtroResultado
-      })
+    if (sesionActualRef.current) {
+      guardarSesionActual(usuarioId, sesionActualRef.current)
     }
-  }
+  }, [usuarioId])
 
   // ==========================================================
   // GUARDAR SESIÓN CON FILTROS
@@ -826,18 +981,44 @@ function AuditorDashboard() {
   function guardarSesionConFiltros(nuevoValor) {
     if (!costoSeleccionado) return
 
-    guardarSesionActual(usuarioId, {
+    const sesion = {
       costoId: costoSeleccionado.id,
       numeroConteo: Number(costoSeleccionado.conteo_habilitado),
       busqueda: nuevoValor.busqueda ?? busqueda,
       filtroResultado:
         nuevoValor.filtroResultado ?? filtroResultado
-    })
+    }
+    sesionActualRef.current = sesion
+    guardarSesionActual(usuarioId, sesion)
   }
 
   // ==========================================================
   // AGREGAR NO MANIFESTADO
   // ==========================================================
+
+  function guardarNoManifestadosDelCosto(lista = noManifestados, formulario = nuevoNoManifestado) {
+    if (!costoSeleccionado) return false
+    const numeroConteo = Number(costoSeleccionado.conteo_habilitado)
+    const guardado = guardarNoManifestadosLocal(
+      usuarioId,
+      costoSeleccionado.id,
+      numeroConteo,
+      { noManifestados: lista, nuevoNoManifestado: formulario }
+    )
+    if (!guardado) {
+      setError('No se pudo guardar el avance de no manifestados en este equipo.')
+      return false
+    }
+    setError('')
+    setBorradorGuardado(true)
+    return true
+  }
+
+  function cambiarCampoNuevoNoManifestado(campo, valor) {
+    const formulario = { ...nuevoNoManifestado, [campo]: valor }
+    guardarNoManifestadosDelCosto(noManifestados, formulario)
+    setNuevoNoManifestado(formulario)
+  }
 
   function agregarNoManifestado() {
     const sku = nuevoNoManifestado.sku.trim()
@@ -863,7 +1044,7 @@ function AuditorDashboard() {
       return
     }
 
-    setNoManifestados([
+    const listaActualizada = [
       ...noManifestados,
       {
         id: `local-${Date.now()}`,
@@ -871,16 +1052,18 @@ function AuditorDashboard() {
         cantidad,
         observacion
       }
-    ])
+    ]
 
-    setNuevoNoManifestado({
+    const formularioVacio = {
       sku: '',
       cantidad: '',
       observacion: ''
-    })
+    }
+    const guardadoLocal = guardarNoManifestadosDelCosto(listaActualizada, formularioVacio)
+    setNoManifestados(listaActualizada)
+    setNuevoNoManifestado(formularioVacio)
 
-    setError('')
-    setBorradorGuardado(true)
+    if (guardadoLocal) setError('')
   }
 
   // ==========================================================
@@ -888,9 +1071,9 @@ function AuditorDashboard() {
   // ==========================================================
 
   function eliminarNoManifestado(id) {
-    setNoManifestados(
-      noManifestados.filter(item => item.id !== id)
-    )
+    const listaActualizada = noManifestados.filter(item => item.id !== id)
+    guardarNoManifestadosDelCosto(listaActualizada)
+    setNoManifestados(listaActualizada)
     setBorradorGuardado(true)
   }
 
@@ -906,13 +1089,13 @@ function AuditorDashboard() {
       nuevoValor = valor === '' ? '' : valor
     }
 
-    setNoManifestados(
-      noManifestados.map(item =>
+    const listaActualizada = noManifestados.map(item =>
         item.id === id
           ? { ...item, [campo]: nuevoValor }
           : item
       )
-    )
+    guardarNoManifestadosDelCosto(listaActualizada)
+    setNoManifestados(listaActualizada)
 
     setBorradorGuardado(true)
   }
@@ -956,8 +1139,9 @@ function AuditorDashboard() {
       usuarioId,
       costoSeleccionado.id,
       numeroConteo,
-      { noManifestados }
+      { noManifestados, nuevoNoManifestado }
     )
+    guardarNoManifestadosDelCosto()
 
     setBorradorGuardado(true)
   }
@@ -966,8 +1150,8 @@ function AuditorDashboard() {
   // GUARDAR NO MANIFESTADOS OFICIALES
   // ==========================================================
 
-  async function guardarNoManifestadosOficiales() {
-    if (!costoSeleccionado) return
+  async function guardarNoManifestadosOficiales({ costoId = costoSeleccionado?.id, registrosLocales = noManifestados } = {}) {
+    if (!costoId) return
 
     const {
       data: usuarioActual,
@@ -983,14 +1167,15 @@ function AuditorDashboard() {
     const { error: errorEliminar } = await supabase
       .from('no_manifestados')
       .delete()
-      .eq('costo_id', costoSeleccionado.id)
+      .eq('costo_id', costoId)
+      .eq('auditor_id', auditorId)
 
     if (errorEliminar) throw errorEliminar
 
-    if (noManifestados.length === 0) return
+    if (registrosLocales.length === 0) return
 
-    const registros = noManifestados.map(item => ({
-      costo_id: costoSeleccionado.id,
+    const registros = registrosLocales.map(item => ({
+      costo_id: costoId,
       sku: String(item.sku).trim(),
       cantidad: Number(item.cantidad),
       auditor_id: auditorId,
@@ -1002,6 +1187,37 @@ function AuditorDashboard() {
       .insert(registros)
 
     if (errorInsertar) throw errorInsertar
+  }
+
+  async function reintentarGuardadoNoManifestados() {
+    if (!noManifestadosPendientes || reintentandoNoManifestados) return
+    setReintentandoNoManifestados(true)
+    try {
+      await guardarNoManifestadosOficiales({
+        costoId: noManifestadosPendientes.costoId,
+        registrosLocales: noManifestadosPendientes.registros
+      })
+      localStorage.removeItem(obtenerClaveBorradorNoManifestados(
+        usuarioId,
+        noManifestadosPendientes.costoId,
+        noManifestadosPendientes.numeroConteo
+      ))
+      localStorage.removeItem(`${obtenerClaveBorradorNoManifestados(
+        usuarioId,
+        noManifestadosPendientes.costoId,
+        noManifestadosPendientes.numeroConteo
+      )}-pendiente`)
+      setNoManifestadosPendientes(null)
+      setResultadoGuardado(actual => actual ? { ...actual, advertencia: '' } : actual)
+    } catch (error) {
+      console.error('No se pudieron reintentar los no manifestados:', error)
+      setResultadoGuardado(actual => actual ? {
+        ...actual,
+        advertencia: 'No se pudieron guardar todavía. El respaldo permanece en este equipo; verifica la conexión e inténtalo nuevamente.'
+      } : actual)
+    } finally {
+      setReintentandoNoManifestados(false)
+    }
   }
 
   // ==========================================================
@@ -1168,6 +1384,7 @@ function AuditorDashboard() {
 
       try {
         await guardarNoManifestadosOficiales()
+        setNoManifestadosPendientes(null)
       } catch (errorNoManifestados) {
         console.error(
           'El conteo se guardó, pero falló el registro de no manifestados:',
@@ -1176,6 +1393,15 @@ function AuditorDashboard() {
 
         advertenciaNoManifestados =
           'El conteo se guardó, pero no se pudieron guardar los productos no manifestados. Verifica esos productos con el administrador.'
+        setNoManifestadosPendientes({
+          costoId: costoSeleccionado.id,
+          numeroConteo,
+          registros: noManifestados
+        })
+        localStorage.setItem(
+          `${obtenerClaveBorradorNoManifestados(usuarioId, costoSeleccionado.id, numeroConteo)}-pendiente`,
+          JSON.stringify({ costoId: costoSeleccionado.id, numeroConteo })
+        )
       }
 
       // ------------------------------------------------------
@@ -1202,7 +1428,8 @@ function AuditorDashboard() {
       limpiarBorradoresCosto(
         usuarioId,
         costoSeleccionado.id,
-        numeroConteo
+        numeroConteo,
+        { conservarNoManifestados: Boolean(advertenciaNoManifestados) }
       )
 
       limpiarSesionActual(usuarioId)
@@ -1288,9 +1515,12 @@ function AuditorDashboard() {
   if (!costoSeleccionado) {
     return (
       <div className="auditor-page">
+        <ValidationNotice message={error} onClose={() => setError('')} />
         <ModalResultadoConteo
           resultado={resultadoGuardado}
           onCerrar={cerrarResultadoGuardado}
+          onReintentar={noManifestadosPendientes ? reintentarGuardadoNoManifestados : null}
+          reintentando={reintentandoNoManifestados}
         />
 
         <div className="auditor-main">
@@ -1300,7 +1530,7 @@ function AuditorDashboard() {
                 Panel de auditoría
               </span>
 
-              <h1>Validación de costos</h1>
+              <h1>Bienvenido, {usuarioNombre}</h1>
 
               <p>
                 Revisa los costos disponibles y realiza el conteo habilitado.
@@ -1331,10 +1561,20 @@ function AuditorDashboard() {
             </div>
           )}
 
-          {error && (
+          {error && !esAvisoCantidadesIncompletas(error) && (
             <div className="auditor-alert error" role="alert">
               <span className="auditor-alert-icon">!</span>
               <span>{error}</span>
+            </div>
+          )}
+
+          {noManifestadosPendientes && (
+            <div className="auditor-alert error" role="alert">
+              <span className="auditor-alert-icon">!</span>
+              <span>Hay no manifestados pendientes de sincronizar. El respaldo local se conservará hasta confirmar el envío.</span>
+              <button type="button" onClick={reintentarGuardadoNoManifestados} disabled={reintentandoNoManifestados}>
+                {reintentandoNoManifestados ? 'Reintentando...' : 'Reintentar sincronización'}
+              </button>
             </div>
           )}
 
@@ -1358,6 +1598,7 @@ function AuditorDashboard() {
 
   return (
     <div className="auditor-page">
+      <ValidationNotice message={error} onClose={() => setError('')} />
       <div className="auditor-main">
         <header className="auditor-topbar">
           <div className="auditor-cost-header">
@@ -1373,7 +1614,7 @@ function AuditorDashboard() {
               </button>
 
               <span className="auditor-dashboard-kicker">
-                Validación de inventario
+                Bienvenido, {usuarioNombre} · Validación de inventario
               </span>
 
               <h1>
@@ -1421,7 +1662,7 @@ function AuditorDashboard() {
           </div>
         )}
 
-        {error && (
+        {error && !esAvisoCantidadesIncompletas(error) && (
           <div className="auditor-alert error" role="alert">
             <span className="auditor-alert-icon">!</span>
             <span>{error}</span>
@@ -1547,172 +1788,6 @@ function AuditorDashboard() {
           </div>
         </section>
 
-        {/* NO MANIFESTADOS */}
-
-        <section className="auditor-no-manifestados">
-          <div className="auditor-section-heading">
-            <div>
-              <span className="auditor-section-kicker">
-                Registro adicional
-              </span>
-
-              <h2>No manifestados</h2>
-
-              <p>
-                Registra productos encontrados físicamente que no aparecen en el costo.
-              </p>
-            </div>
-
-            <span className="auditor-section-badge">
-              {noManifestados.length}
-            </span>
-          </div>
-
-          <div className="no-manifestados-form">
-            <div className="no-manifestados-field">
-              <label htmlFor="no-manifestado-sku">SKU</label>
-
-              <input
-                id="no-manifestado-sku"
-                type="text"
-                placeholder="Código del producto"
-                value={nuevoNoManifestado.sku}
-                onChange={e =>
-                  setNuevoNoManifestado(anterior => ({
-                    ...anterior,
-                    sku: e.target.value
-                  }))
-                }
-              />
-            </div>
-
-            <div className="no-manifestados-field">
-              <label htmlFor="no-manifestado-cantidad">
-                Cantidad
-              </label>
-
-              <input
-                id="no-manifestado-cantidad"
-                type="text"
-                inputMode="decimal"
-                placeholder="Cantidad"
-                value={nuevoNoManifestado.cantidad}
-                onChange={e => {
-                  const valor = e.target.value
-                  if (!/^\d*\.?\d*$/.test(valor)) return
-
-                  setNuevoNoManifestado(anterior => ({
-                    ...anterior,
-                    cantidad: valor
-                  }))
-                }}
-              />
-            </div>
-
-            <div className="no-manifestados-field no-manifestados-field-wide">
-              <label htmlFor="no-manifestado-observacion">
-                Observación
-              </label>
-
-              <input
-                id="no-manifestado-observacion"
-                type="text"
-                placeholder="Observación opcional"
-                value={nuevoNoManifestado.observacion}
-                onChange={e =>
-                  setNuevoNoManifestado(anterior => ({
-                    ...anterior,
-                    observacion: e.target.value
-                  }))
-                }
-              />
-            </div>
-
-            <button
-              type="button"
-              className="btn-no-manifestado-agregar"
-              onClick={agregarNoManifestado}
-            >
-              <span>+</span>
-              Agregar
-            </button>
-          </div>
-
-          {noManifestados.length > 0 && (
-            <div className="no-manifestados-table-wrapper">
-              <table className="no-manifestados-table">
-                <thead>
-                  <tr>
-                    <th>SKU</th>
-                    <th>Cantidad</th>
-                    <th>Observación</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {noManifestados.map(item => (
-                    <tr key={item.id}>
-                      <td>
-                        <input
-                          type="text"
-                          value={item.sku}
-                          onChange={e =>
-                            editarNoManifestado(
-                              item.id,
-                              'sku',
-                              e.target.value
-                            )
-                          }
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={item.cantidad}
-                          onChange={e =>
-                            editarNoManifestado(
-                              item.id,
-                              'cantidad',
-                              e.target.value
-                            )
-                          }
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          type="text"
-                          value={item.observacion || ''}
-                          onChange={e =>
-                            editarNoManifestado(
-                              item.id,
-                              'observacion',
-                              e.target.value
-                            )
-                          }
-                        />
-                      </td>
-
-                      <td>
-                        <button
-                          type="button"
-                          className="btn-no-manifestado-eliminar"
-                          onClick={() => eliminarNoManifestado(item.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
         {/* TABLA DE CONTEO */}
 
         <section className="auditor-table-container">
@@ -1806,6 +1881,160 @@ function AuditorDashboard() {
             </div>
           )}
         </section>
+
+        {/* NO MANIFESTADOS */}
+
+        <section className="auditor-no-manifestados">
+          <div className="auditor-section-heading">
+            <div>
+              <span className="auditor-section-kicker">
+                Registro adicional
+              </span>
+
+              <h2>No manifestados</h2>
+
+              <p>
+                Registra productos encontrados físicamente que no aparecen en el costo.
+              </p>
+            </div>
+
+            <span className="auditor-section-badge">
+              {noManifestados.length}
+            </span>
+          </div>
+
+          <div className="no-manifestados-form">
+            <div className="no-manifestados-field">
+              <label htmlFor="no-manifestado-sku">SKU</label>
+
+              <input
+                id="no-manifestado-sku"
+                type="text"
+                placeholder="Código del producto"
+                value={nuevoNoManifestado.sku}
+                onChange={e => cambiarCampoNuevoNoManifestado('sku', e.target.value)}
+              />
+            </div>
+
+            <div className="no-manifestados-field">
+              <label htmlFor="no-manifestado-cantidad">
+                Cantidad
+              </label>
+
+              <input
+                id="no-manifestado-cantidad"
+                type="text"
+                inputMode="decimal"
+                placeholder="Cantidad"
+                value={nuevoNoManifestado.cantidad}
+                onChange={e => {
+                  const valor = e.target.value
+                  if (!/^\d*\.?\d*$/.test(valor)) return
+
+                  cambiarCampoNuevoNoManifestado('cantidad', valor)
+                }}
+              />
+            </div>
+
+            <div className="no-manifestados-field no-manifestados-field-wide">
+              <label htmlFor="no-manifestado-observacion">
+                Observación
+              </label>
+
+              <input
+                id="no-manifestado-observacion"
+                type="text"
+                placeholder="Observación opcional"
+                value={nuevoNoManifestado.observacion}
+                onChange={e => cambiarCampoNuevoNoManifestado('observacion', e.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="btn-no-manifestado-agregar"
+              onClick={agregarNoManifestado}
+            >
+              <span>+</span>
+              Agregar
+            </button>
+          </div>
+
+          {noManifestados.length > 0 && (
+            <div className="no-manifestados-table-wrapper">
+              <table className="no-manifestados-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Cantidad</th>
+                    <th>Observación</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {noManifestados.map(item => (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          type="text"
+                          value={item.sku}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'sku',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={item.cantidad}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'cantidad',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          type="text"
+                          value={item.observacion || ''}
+                          onChange={e =>
+                            editarNoManifestado(
+                              item.id,
+                              'observacion',
+                              e.target.value
+                            )
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-no-manifestado-eliminar"
+                          onClick={() => eliminarNoManifestado(item.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
 
         {/* GUARDAR */}
 

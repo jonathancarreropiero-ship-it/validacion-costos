@@ -8,6 +8,9 @@ import {
 } from '../../services/costos'
 
 import { supabase } from '../../supabaseClient'
+import { estaOnline, escucharConexion } from '../../services/offlineStorage'
+import ValidationNotice from '../../components/ValidationNotice'
+import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
 
 
 
@@ -16,12 +19,15 @@ function ConteoAdmin({
   costo,
   numeroConteo,
   onGuardado,
-  onVolver
+  onVolver,
+  usuarioId: usuarioIdInicial
 }) {
   const [detalles, setDetalles] = useState([])
   const [cantidades, setCantidades] = useState({})
   const [factores, setFactores] = useState({})
   const [resultados, setResultados] = useState({})
+  const [noManifestados, setNoManifestados] = useState([])
+  const [nuevoNoManifestado, setNuevoNoManifestado] = useState({ sku: '', cantidad: '', observacion: '' })
   const [busqueda, setBusqueda] = useState('')
 
   const [cargando, setCargando] = useState(true)
@@ -31,8 +37,9 @@ function ConteoAdmin({
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
 
-  const [usuarioId, setUsuarioId] = useState(null)
+  const [usuarioId, setUsuarioId] = useState(usuarioIdInicial || null)
   const [borradorRecuperado, setBorradorRecuperado] = useState(false)
+  const [conexionOnline, setConexionOnline] = useState(estaOnline())
 
 
   // ==========================================================
@@ -57,8 +64,8 @@ function ConteoAdmin({
   // ==========================================================
 
   useEffect(() => {
+    if (usuarioIdInicial) return
     let activo = true
-
     async function obtenerUsuario() {
       try {
         const {
@@ -90,8 +97,12 @@ function ConteoAdmin({
     return () => {
       activo = false
     }
-  }, [])
+  }, [usuarioIdInicial])
 
+  useEffect(() => escucharConexion({
+    alConectar: () => setConexionOnline(true),
+    alDesconectar: () => setConexionOnline(false)
+  }), [])
 
   // ==========================================================
   // CARGAR DETALLES
@@ -107,11 +118,12 @@ function ConteoAdmin({
         setMensaje('')
         setBorradorRecuperado(false)
 
-        const datos =
-          await obtenerDetallesCostoAdmin(
-            costo.id,
-            numeroConteo
-          )
+        let datos
+        try { datos = await obtenerDetallesCostoAdmin(costo.id, numeroConteo) } catch (errorRemoto) {
+          const local = claveBorrador ? JSON.parse(localStorage.getItem(claveBorrador) || 'null') : null
+          if (!navigator.onLine && Array.isArray(local?.detalles) && local.detalles.length) datos = local.detalles
+          else throw errorRemoto
+        }
 
         if (!activo) {
           return
@@ -143,13 +155,9 @@ function ConteoAdmin({
           // CONTEO 2 / 3
           // --------------------------------------------------
 
-          else {
+          else if (navigator.onLine) {
             try {
-              const anterior =
-                await obtenerConteoAnterior(
-                  detalle.id,
-                  numeroConteo
-                )
+              const anterior = await obtenerConteoAnterior(detalle.id, numeroConteo)
 
               if (
                 anterior &&
@@ -248,6 +256,18 @@ function ConteoAdmin({
                   )
                 }
 
+                if (Array.isArray(borrador.noManifestados)) {
+                  setNoManifestados(borrador.noManifestados)
+                }
+
+                if (borrador.nuevoNoManifestado && typeof borrador.nuevoNoManifestado === 'object') {
+                  setNuevoNoManifestado({
+                    sku: String(borrador.nuevoNoManifestado.sku || ''),
+                    cantidad: String(borrador.nuevoNoManifestado.cantidad || ''),
+                    observacion: String(borrador.nuevoNoManifestado.observacion || '')
+                  })
+                }
+
                 if (
                   typeof borrador.busqueda === 'string'
                 ) {
@@ -262,6 +282,22 @@ function ConteoAdmin({
                   'Se recuperó tu avance guardado.'
                 )
               }
+            }
+
+            const borradorAdicional = JSON.parse(
+              localStorage.getItem(`${claveBorrador}_no_manifestados`) || 'null'
+            )
+            if (Array.isArray(borradorAdicional?.noManifestados)) {
+              setNoManifestados(borradorAdicional.noManifestados)
+              setBorradorRecuperado(true)
+            }
+            if (borradorAdicional?.nuevoNoManifestado) {
+              setNuevoNoManifestado({
+                sku: String(borradorAdicional.nuevoNoManifestado.sku || ''),
+                cantidad: String(borradorAdicional.nuevoNoManifestado.cantidad || ''),
+                observacion: String(borradorAdicional.nuevoNoManifestado.observacion || '')
+              })
+              setBorradorRecuperado(true)
             }
           } catch (errorBorrador) {
             console.error(
@@ -322,7 +358,10 @@ function ConteoAdmin({
       cantidades,
       factores,
       resultados,
+      noManifestados,
+      nuevoNoManifestado,
       busqueda,
+      detalles,
       actualizadoEn:
         new Date().toISOString()
     }
@@ -343,7 +382,10 @@ function ConteoAdmin({
     cantidades,
     factores,
     resultados,
+    noManifestados,
+    nuevoNoManifestado,
     busqueda,
+    detalles,
     cargando
   ])
 
@@ -767,11 +809,96 @@ function ConteoAdmin({
   // GUARDAR CONTEO
   // ==========================================================
 
+  function guardarBorradorNoManifestadosLocal(lista = noManifestados, formulario = nuevoNoManifestado) {
+    if (!claveBorrador) return false
+
+    try {
+      localStorage.setItem(`${claveBorrador}_no_manifestados`, JSON.stringify({
+        noManifestados: lista,
+        nuevoNoManifestado: formulario,
+        actualizadoEn: new Date().toISOString()
+      }))
+      setError('')
+      return true
+    } catch (errorBorrador) {
+      console.error('Error guardando no manifestados localmente:', errorBorrador)
+      setError('No se pudo guardar el avance en este equipo. Revisa el espacio disponible del navegador.')
+      return false
+    }
+  }
+
+  async function guardarNoManifestadosOficiales() {
+    if (!usuarioId) throw new Error('No se pudo identificar al administrador.')
+
+    const { data: existentes, error: errorExistentes } = await supabase
+      .from('no_manifestados')
+      .select('id, sku')
+      .eq('costo_id', costo.id)
+      .eq('auditor_id', usuarioId)
+    if (errorExistentes) throw errorExistentes
+
+    for (const item of noManifestados) {
+      const registro = {
+        costo_id: costo.id,
+        sku: String(item.sku).trim(),
+        cantidad: Number(item.cantidad),
+        auditor_id: usuarioId,
+        observacion: String(item.observacion || '').trim()
+      }
+      const existente = (existentes || []).find(
+        fila => String(fila.sku || '').trim().toLowerCase() === registro.sku.toLowerCase()
+      )
+
+      const { error } = existente
+        ? await supabase.from('no_manifestados').update(registro).eq('id', existente.id)
+        : await supabase.from('no_manifestados').insert(registro)
+      if (error) throw error
+    }
+  }
+
+  function agregarNoManifestado() {
+    const sku = nuevoNoManifestado.sku.trim()
+    const cantidad = Number(nuevoNoManifestado.cantidad)
+    if (!sku) return setError('Ingresa el SKU del producto no manifestado.')
+    if (!Number.isFinite(cantidad) || cantidad <= 0) return setError('La cantidad del no manifestado debe ser mayor que 0.')
+    if (noManifestados.some(item => String(item.sku).toLowerCase() === sku.toLowerCase())) {
+      return setError('Ese SKU ya fue agregado como no manifestado.')
+    }
+    const listaActualizada = [...noManifestados, { id: `local-${Date.now()}`, sku, cantidad, observacion: nuevoNoManifestado.observacion.trim() }]
+    const formularioVacio = { sku: '', cantidad: '', observacion: '' }
+    const guardadoLocal = guardarBorradorNoManifestadosLocal(listaActualizada, formularioVacio)
+    setNoManifestados(listaActualizada)
+    setNuevoNoManifestado(formularioVacio)
+      if (guardadoLocal) setError('')
+  }
+
+  function editarNoManifestado(id, campo, valor) {
+    if (campo === 'cantidad' && !/^\d*\.?\d*$/.test(valor)) return
+    const listaActualizada = noManifestados.map(item => item.id === id ? { ...item, [campo]: valor } : item)
+    guardarBorradorNoManifestadosLocal(listaActualizada)
+    setNoManifestados(listaActualizada)
+  }
+
+  function cambiarCampoNuevoNoManifestado(campo, valor) {
+    const formularioActualizado = { ...nuevoNoManifestado, [campo]: valor }
+    guardarBorradorNoManifestadosLocal(noManifestados, formularioActualizado)
+    setNuevoNoManifestado(formularioActualizado)
+  }
+
   async function guardar() {
     try {
       setGuardando(true)
       setError('')
       setMensaje('')
+
+      if (!navigator.onLine) throw new Error('Sin conexión: el avance queda guardado localmente hasta recuperar Internet.')
+
+      for (const item of noManifestados) {
+        if (!String(item.sku || '').trim()) throw new Error('Existe un no manifestado sin SKU.')
+        if (!Number.isFinite(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
+          throw new Error(`El SKU no manifestado ${item.sku} debe tener cantidad mayor que cero.`)
+        }
+      }
 
       if (detalles.length === 0) {
         throw new Error(
@@ -843,6 +970,8 @@ function ConteoAdmin({
           }
         )
 
+      await guardarNoManifestadosOficiales()
+
       const resultado =
         await guardarConteoCosto(
           costo.id,
@@ -859,6 +988,7 @@ function ConteoAdmin({
           localStorage.removeItem(
             claveBorrador
           )
+          localStorage.removeItem(`${claveBorrador}_no_manifestados`)
         } catch (errorBorrador) {
           console.error(
             'Error eliminando borrador:',
@@ -1015,6 +1145,7 @@ function ConteoAdmin({
 
   return (
     <div className="admin-conteo">
+      <ValidationNotice message={error} onClose={() => setError('')} />
 
       {/* ======================================================
           CABECERA
@@ -1062,6 +1193,8 @@ function ConteoAdmin({
 
 
         <div className="admin-conteo-header-actions">
+          <div className={`conexion-indicador ${conexionOnline ? 'conexion-online' : 'conexion-offline'}`} role="status"><span className="conexion-indicador-dot" aria-hidden="true" /><div className="conexion-indicador-info"><strong>{conexionOnline ? 'Conectado' : 'Sin conexión'}</strong><span>{conexionOnline ? 'Listo para guardar' : 'Avance guardado localmente'}</span></div></div>
+
 
           <button
             type="button"
@@ -1076,9 +1209,7 @@ function ConteoAdmin({
               ✓
             </span>
 
-            {validandoTodo
-              ? 'Validando...'
-              : 'Validar todo'}
+            {validandoTodo ? <><span className="button-spinner" /> Validando...</> : 'Validar todo'}
           </button>
 
 
@@ -1092,7 +1223,7 @@ function ConteoAdmin({
             }
           >
             <span className="admin-conteo-btn-icon">
-              {guardando ? '…' : '✓'}
+              {guardando ? <span className="button-spinner" /> : '✓'}
             </span>
 
             {guardando
@@ -1130,7 +1261,7 @@ function ConteoAdmin({
         )}
 
 
-        {error && (
+        {error && !esAvisoCantidadesIncompletas(error) && (
           <div className="admin-conteo-alerta error">
             <span className="admin-conteo-alerta-icon">
               !
@@ -1620,6 +1751,49 @@ function ConteoAdmin({
 
         </div>
 
+      </section>
+
+      <section className="admin-no-manifestados" aria-labelledby="admin-no-manifestados-title">
+        <div className="admin-no-manifestados-heading">
+          <div>
+            <span>Registro adicional</span>
+            <h2 id="admin-no-manifestados-title">No manifestados</h2>
+            <p>Agrega productos encontrados físicamente que no aparecen en el costo. Cada cambio se guarda automáticamente en este equipo y se recupera al volver al conteo.</p>
+          </div>
+          <strong>{noManifestados.length}</strong>
+        </div>
+
+        <div className="admin-no-manifestados-form">
+          <label>SKU
+            <input value={nuevoNoManifestado.sku} onChange={event => cambiarCampoNuevoNoManifestado('sku', event.target.value)} placeholder="Código SKU" />
+          </label>
+          <label>Cantidad
+            <input type="text" inputMode="decimal" value={nuevoNoManifestado.cantidad} onChange={event => cambiarCampoNuevoNoManifestado('cantidad', event.target.value)} placeholder="0" />
+          </label>
+          <label>Observación
+            <input value={nuevoNoManifestado.observacion} onChange={event => cambiarCampoNuevoNoManifestado('observacion', event.target.value)} placeholder="Opcional" />
+          </label>
+          <button type="button" onClick={agregarNoManifestado}>+ Agregar SKU</button>
+        </div>
+
+        {noManifestados.length > 0 ? (
+          <div className="admin-no-manifestados-list">
+            {noManifestados.map(item => (
+              <div className="admin-no-manifestados-row" key={item.id}>
+                <input aria-label="SKU no manifestado" value={item.sku} onChange={event => editarNoManifestado(item.id, 'sku', event.target.value)} />
+                <input aria-label="Cantidad no manifestada" type="text" inputMode="decimal" value={item.cantidad} onChange={event => editarNoManifestado(item.id, 'cantidad', event.target.value)} />
+                <input aria-label="Observación no manifestada" value={item.observacion || ''} onChange={event => editarNoManifestado(item.id, 'observacion', event.target.value)} placeholder="Observación" />
+                <button type="button" onClick={() => {
+                  const listaActualizada = noManifestados.filter(actual => actual.id !== item.id)
+                  guardarBorradorNoManifestadosLocal(listaActualizada)
+                  setNoManifestados(listaActualizada)
+                }} aria-label={`Eliminar SKU ${item.sku}`}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="admin-no-manifestados-empty">Aún no agregas productos no manifestados.</p>
+        )}
       </section>
 
     </div>

@@ -33,7 +33,7 @@ function Login({ onLogin }) {
   }
 
   return (
-    <main className="login-page" style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, position: 'fixed', top: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <main className="login-page">
       <div className="login-background-shape shape-one" aria-hidden="true" />
       <div className="login-background-shape shape-two" aria-hidden="true" />
 

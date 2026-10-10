@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
+import { estaOnline, escucharConexion } from '../../services/offlineStorage'
 
 import CostosAdmin from './CostosAdmin'
 import NuevoCosto from './NuevoCosto'
@@ -114,67 +115,15 @@ function AdminDashboard({ user }) {
   const [
     vista,
     setVista
-  ] = useState('costos')
+  ] = useState(() => cargarSesionAdmin(user?.id)?.vista === 'nuevo' ? 'nuevo' : 'costos')
 
-  const [
-    restauracionRealizada,
-    setRestauracionRealizada
-  ] = useState(false)
+  const restauracionRealizada = Boolean(user?.id)
+  const [conexionOnline, setConexionOnline] = useState(estaOnline())
 
-
-  // ========================================================
-  // RESTAURAR VISTA PRINCIPAL
-  // ========================================================
-
-  useEffect(() => {
-
-    if (
-      !user?.id ||
-      restauracionRealizada
-    ) {
-      return
-    }
-
-    const sesion =
-      cargarSesionAdmin(
-        user.id
-      )
-
-
-    // ------------------------------------------------------
-    // NUEVO COSTO
-    // ------------------------------------------------------
-
-    if (
-      sesion?.vista ===
-      'nuevo'
-    ) {
-
-      setVista(
-        'nuevo'
-      )
-
-    } else {
-
-      // ----------------------------------------------------
-      // COSTOS
-      // ----------------------------------------------------
-
-      setVista(
-        'costos'
-      )
-    }
-
-
-    setRestauracionRealizada(
-      true
-    )
-
-  }, [
-    user,
-    restauracionRealizada
-  ])
-
+  useEffect(() => escucharConexion({
+    alConectar: () => setConexionOnline(true),
+    alDesconectar: () => setConexionOnline(false)
+  }), [])
 
   // ========================================================
   // GUARDAR VISTA PRINCIPAL
@@ -342,6 +291,10 @@ function AdminDashboard({ user }) {
 
 
         <div className="admin-dashboard-user">
+          <div className={`conexion-indicador ${conexionOnline ? 'conexion-online' : 'conexion-offline'}`} role="status">
+            <span className="conexion-indicador-dot" aria-hidden="true" />
+            <div className="conexion-indicador-info"><strong>{conexionOnline ? 'Conectado' : 'Sin conexión'}</strong><span>{conexionOnline ? 'Listo para sincronizar' : 'El avance se guarda localmente'}</span></div>
+          </div>
 
           <div className="admin-dashboard-user-info">
 
@@ -397,7 +350,7 @@ function AdminDashboard({ user }) {
                 </span>
 
                 <h2>
-                  Dashboard Administrador
+                  Bienvenido, {user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Administrador'}
                 </h2>
 
                 <p>

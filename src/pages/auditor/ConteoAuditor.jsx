@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   obtenerConteoAnterior,
@@ -8,6 +8,49 @@ import {
 import {
   obtenerAuditoriaOffline
 } from '../../services/offlineStorage'
+import ValidationNotice from '../../components/ValidationNotice'
+import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
+
+async function cargarBorradorLocalAuditor({ usuarioId, costoId, detalleId, numeroConteo, clave }) {
+  if (!usuarioId || !costoId || !detalleId) return null
+
+  try {
+    const guardado = localStorage.getItem(clave)
+    if (guardado) {
+      const borrador = JSON.parse(guardado)
+      if (
+        borrador &&
+        String(borrador.usuarioId) === String(usuarioId) &&
+        Number(borrador.costoId) === Number(costoId) &&
+        Number(borrador.detalleId) === Number(detalleId) &&
+        Number(borrador.numeroConteo) === Number(numeroConteo) &&
+        Array.isArray(borrador.cantidades) &&
+        borrador.cantidades.length > 0
+      ) return borrador
+    }
+
+    const auditoriaOffline = await obtenerAuditoriaOffline({ costoId, usuarioId, numeroConteo })
+    const detallesOffline = Array.isArray(auditoriaOffline?.detalles) ? auditoriaOffline.detalles : []
+    const detalleOffline = detallesOffline.find(item =>
+      String(item.detalleId) === String(detalleId) &&
+      Number(item.numeroConteo) === Number(numeroConteo)
+    )
+    if (!Array.isArray(detalleOffline?.cantidades) || detalleOffline.cantidades.length === 0) return null
+
+    return {
+      usuarioId,
+      costoId,
+      detalleId,
+      numeroConteo,
+      cantidades: detalleOffline.cantidades,
+      factor: detalleOffline.factor ?? '1',
+      updatedAt: detalleOffline.actualizadoEn ?? null
+    }
+  } catch (error) {
+    console.error('Error leyendo borrador local:', error)
+    return null
+  }
+}
 
 function ConteoAuditor({
   detalle,
@@ -21,44 +64,49 @@ function ConteoAuditor({
   const [cantidades, setCantidades] = useState([''])
   const [factor, setFactor] = useState('1')
   const [resultado, setResultado] = useState(null)
-  const [cantidadTotal, setCantidadTotal] = useState(null)
+  const [, setCantidadTotal] = useState(null)
   const [cantidadFinal, setCantidadFinal] = useState(null)
   const [loadingAnterior, setLoadingAnterior] = useState(false)
   const [validando, setValidando] = useState(false)
   const [error, setError] = useState('')
   const [borradorGuardado, setBorradorGuardado] = useState(false)
+  const onCambioRef = useRef(onCambio)
+
+  useEffect(() => {
+    onCambioRef.current = onCambio
+  }, [onCambio])
 
   // ==========================================================
   // CLAVE DEL BORRADOR
   // ==========================================================
 
-  const obtenerClaveBorrador = () => {
+  const obtenerClaveBorrador = useCallback(() => {
 
     return `validacion-costos-usuario-${usuarioId}-costo-${costoId}-detalle-${detalle.id}-conteo-${numeroConteo}`
 
-  }
+  }, [usuarioId, costoId, detalle.id, numeroConteo])
 
   // ==========================================================
   // INFORMAR CAMBIO AL DASHBOARD
   // ==========================================================
 
-  const informarCambio = (
+  const informarCambio = useCallback((
     nuevasCantidades,
     nuevoFactor
   ) => {
 
-    if (!onCambio) {
+    if (!onCambioRef.current) {
       return
     }
 
-    onCambio({
+    onCambioRef.current({
       detalleId: detalle.id,
       numeroConteo,
       cantidades: nuevasCantidades,
       factor: nuevoFactor
     })
 
-  }
+  }, [detalle.id, numeroConteo])
 
   // ==========================================================
   // GUARDAR BORRADOR LOCAL
@@ -124,130 +172,6 @@ function ConteoAuditor({
   // CARGAR BORRADOR LOCAL
   // ==========================================================
 
-  const cargarBorradorLocal = async () => {
-
-    if (!usuarioId || !costoId || !detalle?.id) {
-      return null
-    }
-
-    try {
-
-      // ======================================================
-      // 1. PRIMERO BUSCAR EN LOCALSTORAGE
-      // ======================================================
-
-      const clave =
-        obtenerClaveBorrador()
-
-      const guardado =
-        localStorage.getItem(clave)
-
-      if (guardado) {
-
-        const borrador =
-          JSON.parse(guardado)
-
-        if (
-          borrador &&
-          String(borrador.usuarioId) === String(usuarioId) &&
-          Number(borrador.costoId) === Number(costoId) &&
-          Number(borrador.detalleId) === Number(detalle.id) &&
-          Number(borrador.numeroConteo) === Number(numeroConteo)
-        ) {
-
-          if (
-            Array.isArray(borrador.cantidades) &&
-            borrador.cantidades.length > 0
-          ) {
-
-            return borrador
-
-          }
-
-        }
-
-      }
-
-      // ======================================================
-      // 2. SI NO EXISTE, BUSCAR EN INDEXEDDB
-      // ======================================================
-
-      const auditoriaOffline =
-        await obtenerAuditoriaOffline({
-          costoId,
-          usuarioId,
-          numeroConteo
-        })
-
-      if (!auditoriaOffline) {
-        return null
-      }
-
-      const detallesOffline =
-        Array.isArray(
-          auditoriaOffline.detalles
-        )
-          ? auditoriaOffline.detalles
-          : []
-
-      const detalleOffline =
-        detallesOffline.find(
-          item =>
-            String(item.detalleId) ===
-              String(detalle.id) &&
-            Number(item.numeroConteo) ===
-              Number(numeroConteo)
-        )
-
-      if (!detalleOffline) {
-        return null
-      }
-
-      if (
-        !Array.isArray(
-          detalleOffline.cantidades
-        ) ||
-        detalleOffline.cantidades.length === 0
-      ) {
-        return null
-      }
-
-      return {
-
-        usuarioId,
-
-        costoId,
-
-        detalleId: detalle.id,
-
-        numeroConteo,
-
-        cantidades:
-          detalleOffline.cantidades,
-
-        factor:
-          detalleOffline.factor ??
-          '1',
-
-        updatedAt:
-          detalleOffline.actualizadoEn ??
-          null
-
-      }
-
-    } catch (err) {
-
-      console.error(
-        'Error leyendo borrador local:',
-        err
-      )
-
-      return null
-
-    }
-
-  }
-
   // ==========================================================
   // CARGAR CONTEO
   // ==========================================================
@@ -268,8 +192,13 @@ function ConteoAuditor({
       // 1. BUSCAR BORRADOR LOCAL
       // ------------------------------------------------------
 
-      const borrador =
-        await cargarBorradorLocal()
+      const borrador = await cargarBorradorLocalAuditor({
+        usuarioId,
+        costoId,
+        detalleId: detalle.id,
+        numeroConteo,
+        clave: obtenerClaveBorrador()
+      })
 
       if (borrador) {
 
@@ -423,7 +352,9 @@ function ConteoAuditor({
     detalle.id,
     numeroConteo,
     costoId,
-    usuarioId
+    usuarioId,
+    informarCambio,
+    obtenerClaveBorrador
   ])
 
   // ==========================================================
@@ -757,6 +688,7 @@ const esNumeroPermitido = valor => {
   return (
 
     <div className="conteo-inline">
+      <ValidationNotice message={error} onClose={() => setError('')} />
 
       {/* INDICADOR DE BORRADOR */}
 
@@ -1080,7 +1012,7 @@ const esNumeroPermitido = valor => {
 
       {/* ERROR */}
 
-      {error && (
+      {error && !esAvisoCantidadesIncompletas(error) && (
 
         <div className="conteo-inline-error">
 

@@ -188,13 +188,24 @@ export async function obtenerCostosAuditor() {
   const costoIds = listaCostos.map(costo => costo.id)
 
   // 2. Obtener IDs de detalles visibles para el auditor.
-  const {
-    data: detalles,
-    error: errorDetalles
-  } = await supabase
-    .from('auditor_detalle_costos')
+  // Para el resumen de estado basta con leer los IDs de líneas y su costo.
+  // Intentar primero la tabla base permite reconstruir el resultado aunque
+  // la vista de auditor no exponga filas a un segundo auditor; si la política
+  // de lectura no lo permite, conservar el comportamiento actual como respaldo.
+  let { data: detalles, error: errorDetalles } = await supabase
+    .from('detalle_costos')
     .select('id, costo_id')
     .in('costo_id', costoIds)
+
+  if (errorDetalles || !detalles?.length) {
+    const respuestaVista = await supabase
+      .from('auditor_detalle_costos')
+      .select('id, costo_id')
+      .in('costo_id', costoIds)
+
+    detalles = respuestaVista.data
+    errorDetalles = respuestaVista.error
+  }
 
   if (errorDetalles) {
     console.error(
@@ -278,7 +289,8 @@ export async function obtenerCostosAuditor() {
       resultadoPorCosto.set(clave, {
         numeroConteo: 0,
         lineasConDiferencia: 0,
-        lineasConformes: 0
+        lineasConformes: 0,
+        lineasEvaluadas: 0
       })
     }
 
@@ -289,13 +301,16 @@ export async function obtenerCostosAuditor() {
       resumen.numeroConteo = numeroConteo
       resumen.lineasConDiferencia = 0
       resumen.lineasConformes = 0
+      resumen.lineasEvaluadas = 0
     }
 
     // Contabilizar solamente las líneas del último conteo.
     if (numeroConteo === resumen.numeroConteo) {
-      if (conteo.resultado === 'diferencia') {
+      resumen.lineasEvaluadas += 1
+      const resultadoConteo = String(conteo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+      if (resultadoConteo === 'diferencia' || resultadoConteo === 'no_conforme') {
         resumen.lineasConDiferencia += 1
-      } else if (conteo.resultado === 'conforme') {
+      } else if (resultadoConteo === 'conforme') {
         resumen.lineasConformes += 1
       }
     }
@@ -323,12 +338,21 @@ export async function obtenerCostosAuditor() {
   )
 
   // 8. Devolver costos, conteos, resultados y bloqueos.
-  return listaCostos.map(costo => {
+  const costosConResultado = listaCostos.map(costo => {
     const bloqueo = mapaBloqueos.get(Number(costo.id))
     const clave = String(costo.id)
 
     const registrados = conteosPorCosto.get(clave)
     const resumenResultado = resultadoPorCosto.get(clave)
+    const resultadoPersistido = String(costo.resultado || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+    const resultadoCompartido = resultadoPersistido === 'diferencia' || resultadoPersistido === 'no_conforme'
+      ? 'no_conforme'
+      : resultadoPersistido === 'conforme'
+        ? 'conforme'
+        : null
 
     return {
       ...costo,
@@ -337,14 +361,27 @@ export async function obtenerCostosAuditor() {
         ? [...registrados]
         : [],
 
-      numero_ultimo_conteo:
-        resumenResultado?.numeroConteo ?? null,
-
       lineas_con_diferencia:
         resumenResultado?.lineasConDiferencia ?? 0,
 
       lineas_conformes:
         resumenResultado?.lineasConformes ?? 0,
+
+      conteo_completo: Boolean(
+        resumenResultado &&
+        resumenResultado.lineasEvaluadas === Number(costo.lineas_count)
+      ),
+
+      numero_ultimo_conteo:
+        resumenResultado?.numeroConteo ?? null,
+
+      resultado: resumenResultado &&
+        resumenResultado.lineasEvaluadas === Number(costo.lineas_count)
+        && resumenResultado.lineasConformes + resumenResultado.lineasConDiferencia === Number(costo.lineas_count)
+        ? (resumenResultado.lineasConDiferencia > 0 ? 'no_conforme' : 'conforme')
+        : (resultadoCompartido
+          ? resultadoCompartido
+          : null),
 
       bloqueado_por_mi: Boolean(
         bloqueo?.bloqueado_por_mi
@@ -358,6 +395,8 @@ export async function obtenerCostosAuditor() {
         bloqueo?.ultima_actividad ?? null
     }
   })
+
+  return costosConResultado
 }
 
 // ============================================================
@@ -776,13 +815,38 @@ export async function guardarConteoCosto(
     throw error
   }
 
+  const resultadoServidor = String(data?.resultado || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  const resultadoFinal = resultadoServidor === 'diferencia'
+    ? 'no_conforme'
+    : resultadoServidor
+
+  // Publicar el resultado en la fila compartida del costo.
+  if (resultadoFinal === 'conforme' || resultadoFinal === 'no_conforme') {
+    const resultadoPersistido = resultadoFinal === 'no_conforme'
+      ? 'diferencia'
+      : resultadoFinal
+    const { data: costoActualizado, error: errorResultado } = await supabase
+      .from('costos')
+      .update({ resultado: resultadoPersistido })
+      .eq('id', Number(costoId))
+      .select('id')
+      .maybeSingle()
+
+    if (errorResultado || !costoActualizado) {
+      console.error('El conteo se guardó, pero no se pudo publicar el resultado compartido:', errorResultado)
+    }
+  }
+
   return {
     costoId: Number(data?.costoId ?? costoId),
     numeroConteo: Number(data?.numeroConteo ?? numero),
     totalLineas: Number(data?.totalLineas ?? 0),
     lineasConformes: Number(data?.lineasConformes ?? 0),
     lineasDiferencia: Number(data?.lineasDiferencia ?? 0),
-    resultado: data?.resultado ?? null,
+    resultado: (resultadoFinal || data?.resultado) ?? null,
     estado: data?.estado ?? 'terminado'
   }
 }

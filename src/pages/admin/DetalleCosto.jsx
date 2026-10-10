@@ -1,6 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import "./DetalleCosto.css";
+
+function clasificarDetalleConConteos(detalle, conteos) {
+  const conteosDetalle = (conteos || [])
+    .filter((conteo) => conteo.detalle_costo_id === detalle.id)
+    .sort((a, b) => a.numero_conteo - b.numero_conteo);
+  const ultimoConteo = conteosDetalle[conteosDetalle.length - 1];
+
+  const cantidadLogica = Number(detalle.cantidad_fisica ?? 0);
+  if (!ultimoConteo) {
+    return { tipo: "sin_conteo", diferencia: null, cantidadLogica, cantidadAuditor: null };
+  }
+
+  const cantidadAuditor = Number(ultimoConteo.cantidad_final ?? 0);
+  const diferencia = cantidadAuditor - cantidadLogica;
+  return {
+    tipo: diferencia === 0 ? "conforme" : diferencia > 0 ? "sobrante" : "faltante",
+    diferencia,
+    cantidadLogica,
+    cantidadAuditor,
+  };
+}
 
 export default function DetalleCosto({ costo, onVolver }) {
   const [detalles, setDetalles] = useState([]);
@@ -17,13 +38,9 @@ export default function DetalleCosto({ costo, onVolver }) {
   const [conteoSeleccionado, setConteoSeleccionado] = useState(null);
   const [detalleSeleccionado, setDetalleSeleccionado] = useState(null);
 
-  useEffect(() => {
+  const cargarDetalle = useCallback(async () => {
+    await Promise.resolve();
     if (!costo?.id) return;
-
-    cargarDetalle();
-  }, [costo?.id]);
-
-  async function cargarDetalle() {
     try {
       setCargando(true);
       setError("");
@@ -246,7 +263,12 @@ export default function DetalleCosto({ costo, onVolver }) {
     } finally {
       setCargando(false);
     }
-  }
+  }, [costo]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => cargarDetalle(), 0)
+    return () => window.clearTimeout(timer)
+  }, [cargarDetalle]);
 
   // =========================================================
   // OBTENER LOS CONTEOS DE UN PRODUCTO
@@ -324,55 +346,7 @@ export default function DetalleCosto({ costo, onVolver }) {
   // 10 lógico / 10 auditor = CONFORME
   // =========================================================
   function obtenerClasificacion(detalle) {
-    const ultimoConteo =
-      obtenerUltimoConteo(detalle.id);
-
-    if (!ultimoConteo) {
-      return {
-        tipo: "sin_conteo",
-        diferencia: null,
-        cantidadLogica: Number(
-          detalle.cantidad_fisica ?? 0
-        ),
-        cantidadAuditor: null,
-      };
-    }
-
-    const cantidadLogica = Number(
-      detalle.cantidad_fisica ?? 0
-    );
-
-    const cantidadAuditor = Number(
-      ultimoConteo.cantidad_final ?? 0
-    );
-
-    const diferencia =
-      cantidadAuditor - cantidadLogica;
-
-    if (diferencia === 0) {
-      return {
-        tipo: "conforme",
-        diferencia: 0,
-        cantidadLogica,
-        cantidadAuditor,
-      };
-    }
-
-    if (diferencia > 0) {
-      return {
-        tipo: "sobrante",
-        diferencia,
-        cantidadLogica,
-        cantidadAuditor,
-      };
-    }
-
-    return {
-      tipo: "faltante",
-      diferencia,
-      cantidadLogica,
-      cantidadAuditor,
-    };
+    return clasificarDetalleConConteos(detalle, conteos);
   }
 
   // =========================================================
@@ -380,8 +354,7 @@ export default function DetalleCosto({ costo, onVolver }) {
   // =========================================================
   const detallesFiltrados = useMemo(() => {
     return detalles.filter((detalle) => {
-      const clasificacion =
-        obtenerClasificacion(detalle);
+        const clasificacion = clasificarDetalleConConteos(detalle, conteos);
 
       if (filtro === "todos") {
         return true;
@@ -422,8 +395,7 @@ export default function DetalleCosto({ costo, onVolver }) {
     let faltantes = 0;
 
     detalles.forEach((detalle) => {
-      const clasificacion =
-        obtenerClasificacion(detalle);
+      const clasificacion = clasificarDetalleConConteos(detalle, conteos);
 
       if (
         clasificacion.tipo ===
@@ -490,18 +462,6 @@ export default function DetalleCosto({ costo, onVolver }) {
     }
 
     return "—";
-  }
-
-  function claseResultado(resultado) {
-    if (resultado === "conforme") {
-      return "resultado conforme";
-    }
-
-    if (resultado === "diferencia") {
-      return "resultado diferencia";
-    }
-
-    return "resultado vacio";
   }
 
   // =========================================================
