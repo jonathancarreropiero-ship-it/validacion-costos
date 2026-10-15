@@ -555,6 +555,7 @@ function AuditorDashboard() {
   const [versionLimpieza, setVersionLimpieza] = useState(0)
   const [restauracionRealizada, setRestauracionRealizada] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [errorCargaCostos, setErrorCargaCostos] = useState(false)
   const [loadingDetalles, setLoadingDetalles] = useState(false)
   const [guardandoCosto, setGuardandoCosto] = useState(false)
   const [error, setError] = useState('')
@@ -662,15 +663,6 @@ function AuditorDashboard() {
   // DETECTAR CONEXIÓN
   // ==========================================================
 
-  useEffect(() => {
-    const limpiarConexion = escucharConexion({
-      alConectar: () => setConexionOnline(true),
-      alDesconectar: () => setConexionOnline(false)
-    })
-
-    return () => limpiarConexion()
-  }, [])
-
   // ==========================================================
   // CARGAR PENDIENTES OFFLINE
   // ==========================================================
@@ -703,15 +695,38 @@ function AuditorDashboard() {
       const datos = await obtenerCostosAuditor()
       setCostos(datos || [])
       localStorage.setItem('validacion-costos-auditor-' + usuarioId + '-costos-offline', JSON.stringify(datos || []))
+      setErrorCargaCostos(false)
     } catch (err) {
       console.error(err)
       const cacheLocal = localStorage.getItem('validacion-costos-auditor-' + usuarioId + '-costos-offline')
-      if (cacheLocal) { setCostos(JSON.parse(cacheLocal)); setError('Sin conexión: costos recuperados desde este equipo.') }
-      else setError(err?.message || 'No se pudieron cargar los costos.')
+      const sinConexion = !navigator.onLine
+      setErrorCargaCostos(true)
+      if (cacheLocal) {
+        setCostos(JSON.parse(cacheLocal))
+        setError(sinConexion
+          ? 'Sin conexión: se muestran los costos guardados en este equipo.'
+          : 'No se pudieron actualizar los costos desde el servidor. Se muestran los datos guardados en este equipo.')
+      } else {
+        setError(sinConexion
+          ? 'Sin conexión y no hay costos guardados en este equipo.'
+          : 'No se pudieron cargar los costos desde el servidor. Intenta nuevamente.')
+      }
     } finally {
       setLoading(false)
     }
   }, [usuarioId])
+
+  useEffect(() => {
+    const limpiarConexion = escucharConexion({
+      alConectar: () => {
+        setConexionOnline(true)
+        cargarCostos()
+      },
+      alDesconectar: () => setConexionOnline(false)
+    })
+
+    return () => limpiarConexion()
+  }, [cargarCostos])
 
   useEffect(() => {
     if (!usuarioId) return
@@ -1565,6 +1580,16 @@ function AuditorDashboard() {
             <div className="auditor-alert error" role="alert">
               <span className="auditor-alert-icon">!</span>
               <span>{error}</span>
+              {errorCargaCostos && (
+                <button
+                  type="button"
+                  className="auditor-alert-action"
+                  onClick={cargarCostos}
+                  disabled={loading}
+                >
+                  {loading ? 'Actualizando…' : 'Reintentar'}
+                </button>
+              )}
             </div>
           )}
 
@@ -1614,7 +1639,7 @@ function AuditorDashboard() {
               </button>
 
               <span className="auditor-dashboard-kicker">
-                Bienvenido, {usuarioNombre} · Validación de inventario
+                Bienvenido, {usuarioNombre} · Validación de Costos
               </span>
 
               <h1>

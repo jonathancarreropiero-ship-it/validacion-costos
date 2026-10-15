@@ -31,6 +31,8 @@ export default function DetalleCosto({ costo, onVolver }) {
 
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [exportando, setExportando] = useState(false);
+  const [errorExportacion, setErrorExportacion] = useState("");
 
   const [filtro, setFiltro] = useState("todos");
 
@@ -88,7 +90,8 @@ export default function DetalleCosto({ costo, onVolver }) {
               cantidad_total,
               cantidad_final,
               resultado,
-              auditor_id
+              auditor_id,
+              created_at
             `)
             .in("detalle_costo_id", detalleIds)
             .order("numero_conteo", {
@@ -102,144 +105,45 @@ export default function DetalleCosto({ costo, onVolver }) {
         conteosData = data || [];
       }
 
-      // =====================================================
-      // 3. OBTENER AUDITOR DE CADA CONTEO
-      // =====================================================
-      const conteosConAuditor = await Promise.all(
-        conteosData.map(async (conteo) => {
-          if (!conteo.auditor_id) {
-            return {
-              ...conteo,
-              auditor_email: "Sin auditor",
-            };
-          }
+      // Cargar líneas, no manifestados y cantidades en paralelo tras obtener IDs.
+      const conteoIds = conteosData.map(conteo => conteo.id);
+      const [respuestaItems, respuestaNoManifestados] = await Promise.all([
+        conteoIds.length
+          ? supabase.from("conteo_items").select("id, conteo_id, item_numero, cantidad").in("conteo_id", conteoIds).order("item_numero", { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
+        supabase.from("no_manifestados").select("id, costo_id, sku, cantidad, observacion, auditor_id").eq("costo_id", costo.id).order("id", { ascending: true })
+      ]);
 
-          const { data: email, error: emailError } =
-            await supabase.rpc(
-              "obtener_auditor_email",
-              {
-                p_auditor_id: conteo.auditor_id,
-              }
-            );
+      if (respuestaItems.error) throw respuestaItems.error;
+      if (respuestaNoManifestados.error) throw respuestaNoManifestados.error;
 
-          if (emailError) {
-            console.error(
-              "Error obteniendo correo del auditor:",
-              conteo.auditor_id,
-              emailError
-            );
+      const itemsData = respuestaItems.data || [];
+      const noManifestadosData = respuestaNoManifestados.data || [];
+      const auditorIds = [...new Set([
+        ...conteosData.map(conteo => conteo.auditor_id),
+        ...noManifestadosData.map(item => item.auditor_id)
+      ].filter(Boolean).map(String))];
 
-            return {
-              ...conteo,
-              auditor_email: "No disponible",
-            };
-          }
-
-          return {
-            ...conteo,
-            auditor_email:
-              email || "Usuario no encontrado",
-          };
-        })
-      );
-
-      // =====================================================
-      // 4. OBTENER TODOS LOS ITEMS DE LOS CONTEOS
-      // =====================================================
-      const conteoIds = conteosConAuditor.map(
-        (conteo) => conteo.id
-      );
-
-      let itemsData = [];
-
-      if (conteoIds.length > 0) {
-        const { data, error: itemsError } =
-          await supabase
-            .from("conteo_items")
-            .select(`
-              id,
-              conteo_id,
-              item_numero,
-              cantidad
-            `)
-            .in("conteo_id", conteoIds)
-            .order("item_numero", {
-              ascending: true,
-            });
-
-        if (itemsError) {
-          throw itemsError;
-        }
-
-        itemsData = data || [];
-      }
-
-      // =====================================================
-      // 5. OBTENER SKUS NO MANIFESTADOS
-      // =====================================================
-      const {
-        data: noManifestadosData,
-        error: noManifestadosError,
-      } = await supabase
-        .from("no_manifestados")
-        .select(`
-          id,
-          costo_id,
-          sku,
-          cantidad,
-          observacion,
-          auditor_id
-        `)
-        .eq("costo_id", costo.id)
-        .order("id", { ascending: true });
-
-      if (noManifestadosError) {
-        throw noManifestadosError;
-      }
-
-      // =====================================================
-      // 6. OBTENER CORREO DEL AUDITOR
-      // =====================================================
-      const noManifestadosConAuditor =
-        await Promise.all(
-          (noManifestadosData || []).map(
-            async (item) => {
-              if (!item.auditor_id) {
-                return {
-                  ...item,
-                  auditor_email: "Sin auditor",
-                };
-              }
-
-              const { data: email, error: emailError } =
-                await supabase.rpc(
-                  "obtener_auditor_email",
-                  {
-                    p_auditor_id: item.auditor_id,
-                  }
-                );
-
-              if (emailError) {
-                console.error(
-                  "Error obteniendo correo del auditor:",
-                  item.auditor_id,
-                  emailError
-                );
-
-                return {
-                  ...item,
-                  auditor_email: "No disponible",
-                };
-              }
-
-              return {
-                ...item,
-                auditor_email:
-                  email || "Usuario no encontrado",
-              };
-            }
-          )
+      const respuestasAuditores = await Promise.all(auditorIds.map(async auditorId => {
+        const { data, error: errorCorreo } = await supabase.rpc(
+          "obtener_auditor_email",
+          { p_auditor_id: auditorId }
         );
+        if (errorCorreo) {
+          console.error("Error obteniendo correo del auditor:", auditorId, errorCorreo);
+          return [auditorId, "No disponible"];
+        }
+        return [auditorId, data || "Usuario no encontrado"];
+      }));
+      const emailPorAuditor = new Map(respuestasAuditores);
+      const conteosConAuditor = conteosData.map(conteo => ({
+        ...conteo,
+        auditor_email: conteo.auditor_id ? emailPorAuditor.get(String(conteo.auditor_id)) : "Sin auditor"
+      }));
+      const noManifestadosConAuditor = noManifestadosData.map(item => ({
+        ...item,
+        auditor_email: item.auditor_id ? emailPorAuditor.get(String(item.auditor_id)) : "Sin auditor"
+      }));
 
       // =====================================================
       // 7. GUARDAR DATOS
@@ -347,6 +251,215 @@ export default function DetalleCosto({ costo, onVolver }) {
   // =========================================================
   function obtenerClasificacion(detalle) {
     return clasificarDetalleConConteos(detalle, conteos);
+  }
+
+  async function exportarCostoExcel() {
+    if (exportando) return;
+    setExportando(true);
+    setErrorExportacion("");
+    try {
+      const moduloXLSX = await import("@sitelevelai/xlsx-js-style");
+      const XLSX = moduloXLSX.default || moduloXLSX;
+      const color = {
+        navy: "FF173B72",
+        blue: "FF2D5EAA",
+        pale: "FFEAF1FB",
+        paleAlt: "FFF5F8FD",
+        border: "FFD4DFEF",
+        white: "FFFFFFFF",
+        text: "FF1E3150"
+      };
+      const borderBottom = { style: "thin", color: { rgb: color.border } };
+      const styleRange = (sheet, range, styleForCell) => {
+        const bounds = XLSX.utils.decode_range(range);
+        for (let row = bounds.s.r; row <= bounds.e.r; row += 1) {
+          for (let column = bounds.s.c; column <= bounds.e.c; column += 1) {
+            const address = XLSX.utils.encode_cell({ r: row, c: column });
+            const cell = sheet[address] || { t: "s", v: "" };
+            cell.s = typeof styleForCell === "function"
+              ? styleForCell(row, column, cell)
+              : styleForCell;
+            sheet[address] = cell;
+          }
+        }
+      };
+      const headerStyle = {
+        fill: { patternType: "solid", fgColor: { rgb: color.navy } },
+        font: { name: "Aptos", bold: true, color: { rgb: color.white }, sz: 11 },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: { bottom: { style: "medium", color: { rgb: color.blue } } }
+      };
+      const titleStyle = {
+        fill: { patternType: "solid", fgColor: { rgb: color.navy } },
+        font: { name: "Aptos Display", bold: true, color: { rgb: color.white }, sz: 16 },
+        alignment: { vertical: "center", horizontal: "left" }
+      };
+      const bodyStyle = (row, column) => ({
+        fill: { patternType: "solid", fgColor: { rgb: row % 2 === 0 ? color.paleAlt : color.white } },
+        font: { name: "Aptos", color: { rgb: color.text }, sz: 10, bold: column === 0 },
+        alignment: { vertical: "center", horizontal: column === 0 ? "left" : "left", wrapText: true },
+        border: { bottom: borderBottom }
+      });
+      const filas = detalles.map(detalle => {
+        const ultimoConteo = obtenerUltimoConteo(detalle.id);
+        return {
+          sku: detalle.sku || "",
+          descripcion: detalle.descripcion || "",
+          factor: ultimoConteo?.factor ?? "",
+          um: detalle.um || "",
+          ubicacion: detalle.ubicacion || "",
+          cantidadLogica: detalle.cantidad_fisica ?? "",
+          cantidadFisica: ultimoConteo?.cantidad_final ?? "",
+          resultado: ultimoConteo?.resultado || ""
+        };
+      });
+      const resultadoCostoNormalizado = String(costo?.resultado || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+      const resultadoCostoTexto = resultadoCostoNormalizado === "conforme"
+        ? "CONFORME"
+        : ["no_conforme", "diferencia"].includes(resultadoCostoNormalizado)
+          ? "NO CONFORME"
+          : "PENDIENTE";
+
+      const detalleSheet = XLSX.utils.aoa_to_sheet([
+        [`INFORME DE VALIDACIÓN · COSTO ${costo?.numero_costo || ""}`],
+        [`Estado: ${textoEstado(costo?.estado)}`, `Resultado: ${resultadoCostoTexto}`],
+        [`Líneas: ${filas.length}`, `Fecha de exportación: ${new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" }).format(new Date())}`],
+        [],
+        ["SKU", "Descripción", "Factor", "UM", "Ubicación", "Cantidad lógica", "Cantidad física", "Diferencia", "Resultado"]
+      ]);
+
+      filas.forEach((fila, index) => {
+        const row = index + 6;
+        const cantidadesDisponibles = fila.cantidadLogica !== "" && fila.cantidadFisica !== "";
+        const diferenciaInicial = cantidadesDisponibles
+          ? Number(fila.cantidadFisica) - Number(fila.cantidadLogica)
+          : "";
+        const resultadoInicial = !cantidadesDisponibles
+          ? "SIN CONTEO"
+          : diferenciaInicial === 0
+            ? "CONFORME"
+            : diferenciaInicial > 0
+              ? "SOBRANTE"
+              : "FALTANTE";
+        XLSX.utils.sheet_add_aoa(detalleSheet, [[
+          fila.sku,
+          fila.descripcion,
+          fila.factor,
+          fila.um,
+          fila.ubicacion,
+          fila.cantidadLogica,
+          fila.cantidadFisica,
+          null,
+          null
+        ]], { origin: `A${row}` });
+        detalleSheet[`H${row}`] = { t: cantidadesDisponibles ? "n" : "str", v: diferenciaInicial, f: `IF(OR(F${row}="",G${row}=""),"",G${row}-F${row})` };
+        detalleSheet[`I${row}`] = { t: "str", v: resultadoInicial, f: `IF(H${row}="","SIN CONTEO",IF(H${row}=0,"CONFORME",IF(H${row}>0,"SOBRANTE","FALTANTE")))` };
+      });
+
+      const ultimaFila = filas.length + 5;
+      detalleSheet["!ref"] = `A1:I${Math.max(ultimaFila, 5)}`;
+      detalleSheet["!autofilter"] = { ref: `A5:I${Math.max(ultimaFila, 5)}` };
+      detalleSheet["!cols"] = [
+        { wch: 18 }, { wch: 42 }, { wch: 12 }, { wch: 12 },
+        { wch: 22 }, { wch: 18 }, { wch: 19 }, { wch: 15 }, { wch: 18 }
+      ];
+      detalleSheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }];
+      styleRange(detalleSheet, "A1:I1", titleStyle);
+      styleRange(detalleSheet, "A2:I3", (row, column) => ({
+        fill: { patternType: "solid", fgColor: { rgb: color.pale } },
+        font: { name: "Aptos", color: { rgb: column % 2 === 0 ? color.navy : color.text }, bold: column % 2 === 0, sz: 10 },
+        alignment: { vertical: "center", wrapText: true },
+        border: { bottom: borderBottom }
+      }));
+      styleRange(detalleSheet, "A5:I5", headerStyle);
+      if (filas.length) {
+        styleRange(detalleSheet, `A6:I${ultimaFila}`, (row, column, cell) => {
+          const style = bodyStyle(row, column);
+          style.alignment.horizontal = column >= 5 && column <= 7 ? "right" : "left";
+          if (column >= 5 && column <= 7) style.numFmt = "#,##0.00;[Red]-#,##0.00;–";
+          if (column === 8 && cell.v) {
+            const conforme = cell.v === "CONFORME";
+            style.fill = { patternType: "solid", fgColor: { rgb: conforme ? "FFE7F6EE" : cell.v === "SIN CONTEO" ? color.pale : "FFFFEFEC" } };
+            style.font = { name: "Aptos", bold: true, color: { rgb: conforme ? "FF14734B" : cell.v === "SIN CONTEO" ? color.text : "FFA33D38" }, sz: 10 };
+            style.alignment = { horizontal: "center", vertical: "center" };
+          }
+          return style;
+        });
+      }
+      detalleSheet["!rows"] = [{ hpt: 30 }, { hpt: 22 }, { hpt: 22 }, { hpt: 8 }, { hpt: 28 }];
+      detalleSheet["!views"] = [{ showGridLines: false, state: "frozen", ySplit: 5 }];
+
+      const resumenSheet = XLSX.utils.aoa_to_sheet([
+        [`RESUMEN · COSTO ${costo?.numero_costo || ""}`],
+        ["Estado", textoEstado(costo?.estado)],
+        ["Resultado", resultadoCostoTexto],
+        ["Líneas incluidas", filas.length],
+        ["Conformes", null],
+        ["No conformes", null],
+        ["Sin conteo", null],
+        ["SKUs no manifestados", noManifestados.length]
+      ]);
+      const finalRango = Math.max(ultimaFila, 6);
+      resumenSheet.B5 = { t: "n", v: filas.filter(fila => fila.cantidadLogica !== "" && fila.cantidadFisica !== "" && Number(fila.cantidadFisica) === Number(fila.cantidadLogica)).length, f: `COUNTIF(Detalle!I6:I${finalRango},"CONFORME")` };
+      resumenSheet.B6 = { t: "n", v: filas.filter(fila => fila.cantidadLogica !== "" && fila.cantidadFisica !== "" && Number(fila.cantidadFisica) !== Number(fila.cantidadLogica)).length, f: `COUNTIF(Detalle!I6:I${finalRango},"SOBRANTE")+COUNTIF(Detalle!I6:I${finalRango},"FALTANTE")` };
+      resumenSheet.B7 = { t: "n", v: filas.filter(fila => fila.cantidadLogica === "" || fila.cantidadFisica === "").length, f: `COUNTIF(Detalle!I6:I${finalRango},"SIN CONTEO")` };
+      resumenSheet["!cols"] = [{ wch: 28 }, { wch: 34 }];
+      resumenSheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+      styleRange(resumenSheet, "A1:B1", titleStyle);
+      styleRange(resumenSheet, "A2:B8", (row, column) => ({
+        fill: { patternType: "solid", fgColor: { rgb: row % 2 === 0 ? color.paleAlt : color.white } },
+        font: { name: "Aptos", bold: column === 0 || column === 1, color: { rgb: column === 0 ? color.navy : color.text }, sz: column === 0 ? 10 : 12 },
+        alignment: { vertical: "center", horizontal: column === 0 ? "left" : "right", wrapText: true },
+        border: { bottom: borderBottom }
+      }));
+      styleRange(resumenSheet, "B3", {
+        fill: { patternType: "solid", fgColor: { rgb: resultadoCostoTexto === "CONFORME" ? "FFE7F6EE" : resultadoCostoTexto === "NO CONFORME" ? "FFFFEFEC" : color.pale } },
+        font: { name: "Aptos", bold: true, color: { rgb: resultadoCostoTexto === "CONFORME" ? "FF14734B" : resultadoCostoTexto === "NO CONFORME" ? "FFA33D38" : color.text }, sz: 12 },
+        alignment: { horizontal: "right", vertical: "center" },
+        border: { bottom: borderBottom }
+      });
+      resumenSheet["!rows"] = [{ hpt: 34 }, ...Array.from({ length: 7 }, () => ({ hpt: 25 }))];
+      resumenSheet["!views"] = [{ showGridLines: false }];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, resumenSheet, "Resumen");
+      XLSX.utils.book_append_sheet(workbook, detalleSheet, "Detalle");
+
+      if (noManifestados.length > 0) {
+        const adicionales = XLSX.utils.aoa_to_sheet([
+          [`SKUS NO MANIFESTADOS · COSTO ${costo?.numero_costo || ""}`],
+          [],
+          ["SKU", "Cantidad física", "Observación"]
+        ]);
+        XLSX.utils.sheet_add_aoa(adicionales, noManifestados.map(item => [
+          item.sku || "",
+          Number(item.cantidad) || 0,
+          item.observacion || ""
+        ]), { origin: "A4" });
+        adicionales["!autofilter"] = { ref: `A3:C${noManifestados.length + 3}` };
+        adicionales["!cols"] = [{ wch: 20 }, { wch: 18 }, { wch: 45 }];
+        adicionales["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+        styleRange(adicionales, "A1:C1", titleStyle);
+        styleRange(adicionales, "A3:C3", headerStyle);
+        if (noManifestados.length) {
+          styleRange(adicionales, `A4:C${noManifestados.length + 3}`, (row, column) => bodyStyle(row, column));
+        }
+        adicionales["!rows"] = [{ hpt: 30 }, { hpt: 8 }, { hpt: 28 }];
+        adicionales["!views"] = [{ showGridLines: false, state: "frozen", ySplit: 3 }];
+        XLSX.utils.book_append_sheet(workbook, adicionales, "No manifestados");
+      }
+
+      const nombreSeguro = String(costo?.numero_costo || costo?.id || "costo").replace(/[^\w-]/g, "_");
+      XLSX.writeFile(workbook, `Validacion_Costo_${nombreSeguro}.xlsx`);
+    } catch (error) {
+      console.error("No se pudo exportar el costo:", error);
+      setErrorExportacion(error?.message || "No se pudo generar el archivo Excel.");
+    } finally {
+      setExportando(false);
+    }
   }
 
   // =========================================================
@@ -649,10 +762,32 @@ export default function DetalleCosto({ costo, onVolver }) {
 
             </div>
 
+            <div className="detalle-export-actions">
+              <button
+                type="button"
+                className="detalle-export-button"
+                onClick={exportarCostoExcel}
+                disabled={exportando}
+              >
+                {exportando ? "Preparando Excel…" : "Exportar costo a Excel"}
+              </button>
+            </div>
+
           </div>
 
         </div>
       </header>
+
+      {errorExportacion && (
+        <div className="ui-notice-backdrop" role="presentation">
+          <section className="ui-notice" role="alertdialog" aria-modal="true" aria-labelledby="export-error-title">
+            <span className="ui-notice-icon ui-notice-error" aria-hidden="true">!</span>
+            <h2 id="export-error-title">No se pudo exportar</h2>
+            <p>{errorExportacion}</p>
+            <button type="button" className="ui-notice-button" onClick={() => setErrorExportacion("")}>Entendido</button>
+          </section>
+        </div>
+      )}
 
 
       {/* =====================================================

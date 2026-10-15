@@ -186,6 +186,12 @@ export async function obtenerCostosAuditor() {
   }
 
   const costoIds = listaCostos.map(costo => costo.id)
+  // Los builders de Supabase son thenables, pero no exponen `.catch()`.
+  // Envolver la llamada en una promesa nativa conserva el fallback de bloqueos
+  // si la RPC falla y evita abortar la carga completa del auditor.
+  const bloqueosPromise = Promise.resolve()
+    .then(() => supabase.rpc('obtener_bloqueos_costos_auditor'))
+    .catch(error => ({ data: null, error }))
 
   // 2. Obtener IDs de detalles visibles para el auditor.
   // Para el resumen de estado basta con leer los IDs de líneas y su costo.
@@ -220,27 +226,37 @@ export async function obtenerCostosAuditor() {
   let conteos = []
 
   if (detalleIds.length > 0) {
-    const {
-      data,
-      error: errorConteos
-    } = await supabase
-      .from('conteos')
-      .select(`
-        detalle_costo_id,
-        numero_conteo,
-        resultado
-      `)
-      .in('detalle_costo_id', detalleIds)
+    try {
+      const {
+        data,
+        error: errorConteos
+      } = await supabase
+        .from('conteos')
+        .select(`
+          detalle_costo_id,
+          numero_conteo,
+          resultado,
+          created_at
+        `)
+        .in('detalle_costo_id', detalleIds)
 
-    if (errorConteos) {
-      console.error(
-        'Error consultando conteos registrados:',
+      if (errorConteos) {
+        // RLS puede impedir que un auditor lea conteos de otros usuarios.
+        // Los resultados compartidos en costos siguen visibles sin exponer
+        // las filas de conteo ni bloquear la lista completa.
+        console.warn(
+          'No se pudieron leer los conteos detallados del auditor; se usarán los resultados compartidos:',
+          errorConteos
+        )
+      } else {
+        conteos = data || []
+      }
+    } catch (errorConteos) {
+      console.warn(
+        'Falló la lectura de conteos del auditor; se usarán los resultados compartidos:',
         errorConteos
       )
-      throw errorConteos
     }
-
-    conteos = data || []
   }
 
   // 4. Relacionar cada detalle con su costo.
@@ -272,7 +288,9 @@ export async function obtenerCostosAuditor() {
     )
   }
 
-  // 6. Resumir el resultado del último conteo de cada costo.
+  // 6. Resumir cada conteo. Los conteos posteriores pueden incluir solo
+  // las líneas con diferencia del conteo anterior, no todas las líneas base.
+  const resultadosPorConteoCosto = new Map()
   const resultadoPorCosto = new Map()
 
   for (const conteo of conteos) {
@@ -285,42 +303,56 @@ export async function obtenerCostosAuditor() {
     const clave = String(costoId)
     const numeroConteo = Number(conteo.numero_conteo)
 
-    if (!resultadoPorCosto.has(clave)) {
-      resultadoPorCosto.set(clave, {
-        numeroConteo: 0,
+    let resultadosPorNumero = resultadosPorConteoCosto.get(clave)
+    if (!resultadosPorNumero) {
+      resultadosPorNumero = new Map()
+      resultadosPorConteoCosto.set(clave, resultadosPorNumero)
+    }
+
+    if (!resultadosPorNumero.has(numeroConteo)) {
+      resultadosPorNumero.set(numeroConteo, {
+        numeroConteo,
         lineasConDiferencia: 0,
         lineasConformes: 0,
-        lineasEvaluadas: 0
+        lineasEvaluadas: 0,
+        fechaRealizado: null
       })
     }
 
-    const resumen = resultadoPorCosto.get(clave)
-
-    // Si encontramos un conteo posterior, empezar su resumen.
-    if (numeroConteo > resumen.numeroConteo) {
-      resumen.numeroConteo = numeroConteo
-      resumen.lineasConDiferencia = 0
-      resumen.lineasConformes = 0
-      resumen.lineasEvaluadas = 0
+    const resumen = resultadosPorNumero.get(numeroConteo)
+    if (conteo.created_at && (!resumen.fechaRealizado || conteo.created_at > resumen.fechaRealizado)) {
+      resumen.fechaRealizado = conteo.created_at
     }
-
-    // Contabilizar solamente las líneas del último conteo.
-    if (numeroConteo === resumen.numeroConteo) {
-      resumen.lineasEvaluadas += 1
-      const resultadoConteo = String(conteo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
-      if (resultadoConteo === 'diferencia' || resultadoConteo === 'no_conforme') {
-        resumen.lineasConDiferencia += 1
-      } else if (resultadoConteo === 'conforme') {
-        resumen.lineasConformes += 1
-      }
+    resumen.lineasEvaluadas += 1
+    const resultadoConteo = String(conteo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+    if (resultadoConteo === 'diferencia' || resultadoConteo === 'no_conforme') {
+      resumen.lineasConDiferencia += 1
+    } else if (resultadoConteo === 'conforme') {
+      resumen.lineasConformes += 1
     }
+  }
+
+  for (const costo of listaCostos) {
+    const clave = String(costo.id)
+    const resultadosPorNumero = resultadosPorConteoCosto.get(clave)
+    if (!resultadosPorNumero?.size) continue
+
+    const numeroConteo = Math.max(...resultadosPorNumero.keys())
+    const resumen = resultadosPorNumero.get(numeroConteo)
+    const lineasEsperadas = numeroConteo === 1
+      ? Number(costo.lineas_count)
+      : (resultadosPorNumero.get(numeroConteo - 1)?.lineasConDiferencia ?? 0)
+    resumen.completo = resumen.lineasEvaluadas > 0 &&
+      resumen.lineasEvaluadas === lineasEsperadas &&
+      resumen.lineasConformes + resumen.lineasConDiferencia === resumen.lineasEvaluadas
+    resultadoPorCosto.set(clave, resumen)
   }
 
   // 7. Obtener bloqueos actuales.
   const {
     data: bloqueos,
     error: errorBloqueos
-  } = await supabase.rpc('obtener_bloqueos_costos_auditor')
+  } = await bloqueosPromise
 
   if (errorBloqueos) {
     console.error(
@@ -369,15 +401,17 @@ export async function obtenerCostosAuditor() {
 
       conteo_completo: Boolean(
         resumenResultado &&
-        resumenResultado.lineasEvaluadas === Number(costo.lineas_count)
+        resumenResultado.completo
       ),
 
       numero_ultimo_conteo:
         resumenResultado?.numeroConteo ?? null,
 
+      fecha_realizado:
+        resumenResultado?.fechaRealizado ?? null,
+
       resultado: resumenResultado &&
-        resumenResultado.lineasEvaluadas === Number(costo.lineas_count)
-        && resumenResultado.lineasConformes + resumenResultado.lineasConDiferencia === Number(costo.lineas_count)
+        resumenResultado.completo
         ? (resumenResultado.lineasConDiferencia > 0 ? 'no_conforme' : 'conforme')
         : (resultadoCompartido
           ? resultadoCompartido

@@ -33,6 +33,7 @@ function App() {
     roleLoading,
     setRoleLoading
   ] = useState(false)
+  const sessionUserId = session?.user?.id ?? null
 
   const comprobarSesion = useCallback(async () => {
     try {
@@ -117,12 +118,12 @@ function App() {
 
   useEffect(() => {
 
-    if (!session) return
+    if (!sessionUserId) return
 
     const timer = window.setTimeout(cargarRol, 0)
     return () => window.clearTimeout(timer)
 
-  }, [session, cargarRol])
+  }, [sessionUserId, cargarRol])
 
 
   // ========================================================

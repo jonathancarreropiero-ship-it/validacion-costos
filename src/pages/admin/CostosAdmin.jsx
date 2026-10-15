@@ -10,6 +10,8 @@ import {
 } from '../../services/costos'
 
 import StatusBadge from '../../components/StatusBadge'
+import CostListFilters from '../../components/CostListFilters'
+import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 import DetalleCosto from './DetalleCosto'
 import ConteoAdmin from './ConteoAdmin'
@@ -121,6 +123,9 @@ function CostosAdmin({ usuarioId }) {
   const [costos, setCostos] = useState([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
+  const [fechaFiltro, setFechaFiltro] = useState('')
+  const [modoFechaFiltro, setModoFechaFiltro] = useState('subido')
+  const [estadoFiltro, setEstadoFiltro] = useState('todos')
   const [costoSeleccionado, setCostoSeleccionado] = useState(null)
   const [conteoAdmin, setConteoAdmin] = useState(null)
   const [habilitando, setHabilitando] = useState(null)
@@ -172,6 +177,49 @@ function CostosAdmin({ usuarioId }) {
         costo.numero_ultimo_conteo = null
       }
       const idsCostos = costosActualizados.map(costo => costo.id)
+      const bloqueosPorCostoPromise = idsCostos.length
+        ? (async () => {
+            try {
+              let { data: bloqueos, error: errorBloqueos } = await supabase.rpc('obtener_bloqueos_costos_admin')
+              if (errorBloqueos) {
+                // Compatibilidad mientras se agrega la función segura de admin en Supabase.
+                const respuestaAnterior = await supabase.rpc('obtener_bloqueos_costos_auditor')
+                bloqueos = respuestaAnterior.data
+                errorBloqueos = respuestaAnterior.error
+              }
+              if (errorBloqueos) throw errorBloqueos
+              const registros = Array.isArray(bloqueos) ? bloqueos : bloqueos ? [bloqueos] : []
+              const idUsuarioDeBloqueo = bloqueo => {
+                const actor = bloqueo.usuario ?? bloqueo.auditor ?? bloqueo.owner ?? bloqueo.responsable
+                return bloqueo.auditor_id ?? bloqueo.usuario_id ?? bloqueo.user_id ?? bloqueo.owner_id ?? bloqueo.responsable_id ?? bloqueo.bloqueado_por_id ?? bloqueo.bloqueado_por_usuario_id ?? actor?.id ?? (bloqueo.bloqueado_por && !String(bloqueo.bloqueado_por).includes('@') ? bloqueo.bloqueado_por : null)
+              }
+              const idUsuarioPorCosto = new Map(registros.map(bloqueo => [
+                String(bloqueo.costo_id),
+                idUsuarioDeBloqueo(bloqueo)
+              ]))
+              const idsUsuarios = [...new Set([...idUsuarioPorCosto.values()].filter(Boolean).map(String))]
+              const correos = new Map()
+              await Promise.all(idsUsuarios.map(async id => {
+                const { data: correo, error: errorCorreo } = await supabase.rpc('obtener_auditor_email', { p_auditor_id: id })
+                if (!errorCorreo && correo) correos.set(id, correo)
+              }))
+              return new Map(registros.map(bloqueo => {
+                const idUsuario = idUsuarioPorCosto.get(String(bloqueo.costo_id))
+                const actor = bloqueo.usuario ?? bloqueo.auditor ?? bloqueo.owner ?? bloqueo.responsable
+                const nombre = bloqueo.auditor_nombre ?? bloqueo.usuario_nombre ?? bloqueo.user_name ?? bloqueo.owner_name ?? bloqueo.responsable_nombre ?? bloqueo.nombre_completo ?? bloqueo.nombre_usuario ?? bloqueo.nombre ?? actor?.nombre ?? actor?.nombre_completo ?? actor?.full_name ?? actor?.name
+                const correo = bloqueo.auditor_email ?? bloqueo.usuario_email ?? bloqueo.user_email ?? bloqueo.owner_email ?? bloqueo.bloqueado_por_email ?? bloqueo.email ?? actor?.email ?? (String(bloqueo.bloqueado_por || '').includes('@') ? bloqueo.bloqueado_por : null) ?? correos.get(String(idUsuario))
+                const bloqueado = Boolean(bloqueo.bloqueado_por_mi || bloqueo.bloqueado_por_otro || bloqueo.activo || idUsuario || correo)
+                return [String(bloqueo.costo_id), {
+                  ...bloqueo,
+                  usuario_realizando: nombre || correo || (idUsuario ? `Usuario ${String(idUsuario).slice(0, 8)}` : bloqueado ? 'Usuario activo' : null)
+                }]
+              }))
+            } catch (errorBloqueos) {
+              console.warn('No se pudo obtener el usuario que mantiene cada costo:', errorBloqueos)
+              return new Map()
+            }
+          })()
+        : Promise.resolve(new Map())
 
       if (idsCostos.length) {
         const { data: detalles, error: errorDetalles } = await supabase
@@ -185,48 +233,85 @@ function CostosAdmin({ usuarioId }) {
         if (idsDetalles.length) {
           const { data: conteos, error: errorConteos } = await supabase
             .from('conteos')
-            .select('detalle_costo_id, numero_conteo, resultado')
+          .select('detalle_costo_id, numero_conteo, resultado, created_at, auditor_id')
             .in('detalle_costo_id', idsDetalles)
           if (errorConteos) throw errorConteos
 
+          const resumenesPorConteoCosto = new Map()
           const resumenPorCosto = new Map()
           const conteosRegistradosPorCosto = new Map()
+          const usuarioConteoPorCosto = new Map()
           for (const conteo of conteos || []) {
             const costoId = detallePorId.get(String(conteo.detalle_costo_id))
             if (!costoId) continue
             const numero = Number(conteo.numero_conteo)
             if (!conteosRegistradosPorCosto.has(costoId)) conteosRegistradosPorCosto.set(costoId, new Set())
             conteosRegistradosPorCosto.get(costoId).add(numero)
-            const resumen = resumenPorCosto.get(costoId)
-            if (!resumen || numero > resumen.numero) {
-              resumenPorCosto.set(costoId, { numero, lineas: 0, diferencias: 0, resultados: 0 })
+            let resumenesPorNumero = resumenesPorConteoCosto.get(costoId)
+            if (!resumenesPorNumero) {
+              resumenesPorNumero = new Map()
+              resumenesPorConteoCosto.set(costoId, resumenesPorNumero)
             }
-            const ultimo = resumenPorCosto.get(costoId)
-            if (numero !== ultimo.numero) continue
-            ultimo.lineas += 1
+            if (!resumenesPorNumero.has(numero)) {
+              resumenesPorNumero.set(numero, { numero, lineas: 0, diferencias: 0, resultados: 0, fechaRealizado: null })
+            }
+            const resumen = resumenesPorNumero.get(numero)
+            if (conteo.created_at && (!resumen.fechaRealizado || conteo.created_at > resumen.fechaRealizado)) {
+              resumen.fechaRealizado = conteo.created_at
+            }
+            resumen.lineas += 1
             const resultadoConteo = String(conteo.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
             if (resultadoConteo === 'diferencia' || resultadoConteo === 'no_conforme') {
-              ultimo.diferencias += 1
-              ultimo.resultados += 1
+              resumen.diferencias += 1
+              resumen.resultados += 1
             }
-            if (resultadoConteo === 'conforme') ultimo.resultados += 1
+            if (resultadoConteo === 'conforme') resumen.resultados += 1
+
+            const resumenUltimo = resumenPorCosto.get(costoId)
+            if (!resumenUltimo || numero > resumenUltimo.numero) {
+              resumenPorCosto.set(costoId, resumen)
+              usuarioConteoPorCosto.set(costoId, conteo.auditor_id || null)
+            }
           }
 
+          for (const costo of costosActualizados) {
+            const resumenesPorNumero = resumenesPorConteoCosto.get(String(costo.id))
+            const resumen = resumenPorCosto.get(String(costo.id))
+            if (!resumenesPorNumero || !resumen) continue
+            const lineasEsperadas = resumen.numero === 1
+              ? Number(costo.lineas_count)
+              : (resumenesPorNumero.get(resumen.numero - 1)?.diferencias ?? 0)
+            resumen.completo = resumen.lineas > 0 &&
+              resumen.lineas === lineasEsperadas &&
+              resumen.resultados === resumen.lineas
+          }
+
+          const idsAuditoresConteo = [...new Set([...usuarioConteoPorCosto.values()].filter(Boolean).map(String))]
+          const correoPorAuditorConteo = new Map()
+          await Promise.all(idsAuditoresConteo.map(async auditorId => {
+            try {
+              const { data: correo, error: errorCorreo } = await supabase.rpc('obtener_auditor_email', { p_auditor_id: auditorId })
+              if (!errorCorreo && correo) correoPorAuditorConteo.set(auditorId, correo)
+            } catch {
+              // La consulta de identidad es complementaria: no debe bloquear la lista.
+            }
+          }))
+
+          const publicacionesPendientes = []
           for (const costo of costosActualizados) {
             const clave = String(costo.id)
             const resumen = resumenPorCosto.get(clave)
             const registrados = conteosRegistradosPorCosto.get(clave)
             costo.conteos_registrados = registrados ? [...registrados] : []
             costo.numero_ultimo_conteo = resumen?.numero ?? null
-            const resultadoDerivado = resumen &&
-              resumen.lineas === Number(costo.lineas_count) &&
-              resumen.resultados === Number(costo.lineas_count)
+            costo.fecha_realizado = resumen?.fechaRealizado ?? null
+            costo.usuario_conteo_realizado = correoPorAuditorConteo.get(String(usuarioConteoPorCosto.get(clave))) || null
+            const resultadoDerivado = resumen?.completo
               ? (resumen.diferencias > 0 ? 'no_conforme' : 'conforme')
               : null
             const resultadoGuardado = resultadosPersistidos.get(clave)
             costo.resultado = resultadoDerivado || (
-              registrados?.size > 0 && String(costo.estado || '').toLowerCase() === 'terminado'
-              && ['conforme', 'no_conforme'].includes(resultadoGuardado)
+              registrados?.size > 0 && ['conforme', 'no_conforme'].includes(resultadoGuardado)
                 ? resultadoGuardado
                 : null
             )
@@ -238,19 +323,25 @@ function CostosAdmin({ usuarioId }) {
               const resultadoPersistido = resultadoDerivado === 'no_conforme'
                 ? 'diferencia'
                 : resultadoDerivado
-              const { error: errorPublicacion } = await supabase
+              publicacionesPendientes.push(supabase
                 .from('costos')
                 .update({ resultado: resultadoPersistido })
                 .eq('id', costo.id)
-
-              if (errorPublicacion) {
-                console.error('No se pudo compartir el resultado calculado:', errorPublicacion)
-              }
+                .then(({ error: errorPublicacion }) => {
+                  if (errorPublicacion) {
+                    console.error('No se pudo compartir el resultado calculado:', errorPublicacion)
+                  }
+                }))
             }
           }
+          await Promise.all(publicacionesPendientes)
         }
       }
 
+      const bloqueosPorCosto = await bloqueosPorCostoPromise
+      for (const costo of costosActualizados) {
+        costo.usuario_realizando = bloqueosPorCosto.get(String(costo.id))?.usuario_realizando ?? costo.usuario_conteo_realizado ?? null
+      }
       setCostos(costosActualizados)
       localStorage.setItem('validacion-costos-admin-' + usuarioId + '-costos-offline', JSON.stringify(costosActualizados))
     } catch (error) {
@@ -787,12 +878,20 @@ function CostosAdmin({ usuarioId }) {
   // FILTRO
   // ==========================================================
 
-  const costosFiltrados = costos.filter(
-    costo =>
-      String(costo.numero_costo)
-        .toLowerCase()
-        .includes(busqueda.toLowerCase())
-  )
+  const costosFiltrados = filtrarListaCostos(costos, {
+    busqueda,
+    fecha: fechaFiltro,
+    modoFecha: modoFechaFiltro,
+    estado: estadoFiltro
+  })
+  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos')
+
+  function limpiarFiltrosLista() {
+    manejarBusqueda('')
+    setFechaFiltro('')
+    setModoFechaFiltro('subido')
+    setEstadoFiltro('todos')
+  }
 
 
   // ==========================================================
@@ -920,27 +1019,17 @@ function CostosAdmin({ usuarioId }) {
       {/* HERRAMIENTAS */}
 
       <div className="costos-toolbar">
-        <div className="costos-search">
-          <input
-            type="text"
-            placeholder="Buscar por número de costo..."
-            value={busqueda}
-            onChange={e => manejarBusqueda(e.target.value)}
-            aria-label="Buscar costo"
-          />
-
-          {busqueda && (
-            <button
-              type="button"
-              className="costos-search-clear"
-              onClick={() => manejarBusqueda('')}
-              title="Limpiar búsqueda"
-              aria-label="Limpiar búsqueda"
-            >
-              ×
-            </button>
-          )}
-        </div>
+        <CostListFilters
+          busqueda={busqueda}
+          onBusquedaChange={manejarBusqueda}
+          fecha={fechaFiltro}
+          onFechaChange={setFechaFiltro}
+          modoFecha={modoFechaFiltro}
+          onModoFechaChange={setModoFechaFiltro}
+          estado={estadoFiltro}
+          onEstadoChange={setEstadoFiltro}
+          onLimpiar={limpiarFiltrosLista}
+        />
 
         <div className="costos-results-count">
           <strong>{costosFiltrados.length}</strong>
@@ -969,26 +1058,26 @@ function CostosAdmin({ usuarioId }) {
       {!loading && costosFiltrados.length === 0 && (
         <div className="costos-empty-card">
           <div className="costos-empty-icon">
-            {busqueda ? '⌕' : '+'}
+            {filtrosListaActivos ? '⌕' : '+'}
           </div>
 
           <h4>
-            {busqueda
+            {filtrosListaActivos
               ? 'No encontramos resultados'
               : 'No existen costos registrados'}
           </h4>
 
           <p>
-            {busqueda
+            {filtrosListaActivos
               ? 'Intenta buscar utilizando otro número de costo.'
               : 'Cuando registres un nuevo costo aparecerá aquí.'}
           </p>
 
-          {busqueda && (
+          {filtrosListaActivos && (
             <button
               className="costos-clear-button"
               type="button"
-              onClick={() => manejarBusqueda('')}
+              onClick={limpiarFiltrosLista}
             >
               Limpiar búsqueda
             </button>
@@ -1005,10 +1094,13 @@ function CostosAdmin({ usuarioId }) {
             <thead>
               <tr>
                 <th>Número</th>
+                <th>Subido</th>
+                <th>Realizado</th>
                 <th>Estado</th>
                 <th>Líneas</th>
                 <th>Conteo actual</th>
                 <th>Resultado</th>
+                <th>Usuario realizando</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -1029,6 +1121,9 @@ function CostosAdmin({ usuarioId }) {
                       </div>
                     </div>
                   </td>
+
+                  <td><span className="cost-date-value">{formatoFechaCosto(costo.created_at)}</span></td>
+                  <td><span className="cost-date-value">{formatoFechaCosto(costo.fecha_realizado)}</span></td>
 
 
                   {/* ESTADO */}
@@ -1097,6 +1192,16 @@ function CostosAdmin({ usuarioId }) {
                       <span className="resultado-pendiente">
                         {costo.numero_ultimo_conteo ? 'Pendiente' : 'Sin conteo'}
                       </span>
+                    )}
+                  </td>
+
+                  <td>
+                    {costo.estado === 'en_proceso' ? (
+                      <span className="cost-owner-value">
+                        {costo.usuario_realizando || '—'}
+                      </span>
+                    ) : (
+                      <span className="cost-date-value">—</span>
                     )}
                   </td>
 

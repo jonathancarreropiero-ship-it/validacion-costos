@@ -1171,7 +1171,7 @@ function ConteoAdmin({
 
             <div>
               <span className="admin-conteo-kicker">
-                Validación de inventario
+                Validación de Costos
               </span>
 
               <h2>

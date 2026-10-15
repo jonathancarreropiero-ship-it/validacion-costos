@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 
 import { obtenerCostosAuditor } from '../../services/costos'
+import CostListFilters from '../../components/CostListFilters'
+import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 function AuditorCostos({
   costos: costosProp = [],
@@ -15,6 +17,9 @@ function AuditorCostos({
   )
 
   const [busqueda, setBusqueda] = useState('')
+  const [fechaFiltro, setFechaFiltro] = useState('')
+  const [modoFechaFiltro, setModoFechaFiltro] = useState('subido')
+  const [estadoFiltro, setEstadoFiltro] = useState('todos')
   const [alerta, setAlerta] = useState(null)
 
   // ==========================================================
@@ -77,17 +82,20 @@ function AuditorCostos({
   // BUSCAR
   // ==========================================================
 
-  const costosFiltrados = costos.filter(costo => {
-    const texto = busqueda.trim().toLowerCase()
-
-    if (!texto) {
-      return true
-    }
-
-    return String(costo.numero_costo ?? '')
-      .toLowerCase()
-      .includes(texto)
+  const costosFiltrados = filtrarListaCostos(costos, {
+    busqueda,
+    fecha: fechaFiltro,
+    modoFecha: modoFechaFiltro,
+    estado: estadoFiltro
   })
+  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos')
+
+  function limpiarFiltrosLista() {
+    setBusqueda('')
+    setFechaFiltro('')
+    setModoFechaFiltro('subido')
+    setEstadoFiltro('todos')
+  }
 
   // ==========================================================
   // SELECCIONAR COSTO Y VALIDAR BLOQUEO VISUAL
@@ -294,7 +302,7 @@ function AuditorCostos({
               marginBottom: '4px'
             }}
           >
-            Gestión de inventario
+            Gestión de Costos
           </span>
 
           <h2
@@ -365,34 +373,17 @@ function AuditorCostos({
       {/* BUSCADOR */}
 
       <div className="auditor-costos-toolbar">
-        <div
-          className="auditor-costos-search"
-          style={{
-            position: 'relative',
-            flex: 1,
-            maxWidth: '400px'
-          }}
-        >
-          <input
-            type="text"
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar por número de costo..."
-            aria-label="Buscar costo por número"
-          />
-
-          {busqueda && (
-            <button
-              type="button"
-              className="auditor-costos-search-clear"
-              onClick={() => setBusqueda('')}
-              aria-label="Limpiar búsqueda"
-              title="Limpiar búsqueda"
-            >
-              ×
-            </button>
-          )}
-        </div>
+        <CostListFilters
+          busqueda={busqueda}
+          onBusquedaChange={setBusqueda}
+          fecha={fechaFiltro}
+          onFechaChange={setFechaFiltro}
+          modoFecha={modoFechaFiltro}
+          onModoFechaChange={setModoFechaFiltro}
+          estado={estadoFiltro}
+          onEstadoChange={setEstadoFiltro}
+          onLimpiar={limpiarFiltrosLista}
+        />
 
         <div
           className="auditor-costos-results"
@@ -414,26 +405,26 @@ function AuditorCostos({
       {costosFiltrados.length === 0 ? (
         <div className="auditor-empty">
           <div className="auditor-empty-icon">
-            {busqueda ? '⌕' : '□'}
+            {filtrosListaActivos ? '⌕' : '□'}
           </div>
 
           <h3>
-            {busqueda
+            {filtrosListaActivos
               ? 'No se encontró ningún costo'
               : 'No hay costos registrados'}
           </h3>
 
           <p>
-            {busqueda
-              ? 'Prueba con otro número de costo.'
+            {filtrosListaActivos
+              ? 'Ajusta la fecha, el estado o el número de costo.'
               : 'Cuando exista un costo disponible aparecerá aquí.'}
           </p>
 
-          {busqueda && (
+          {filtrosListaActivos && (
             <button
               type="button"
               className="auditor-empty-clear"
-              onClick={() => setBusqueda('')}
+              onClick={limpiarFiltrosLista}
             >
               Limpiar búsqueda
             </button>
@@ -491,6 +482,8 @@ function AuditorCostos({
               <thead>
                 <tr>
                   <th className="col-costo">Costo</th>
+                  <th className="col-date">Subido</th>
+                  <th className="col-date">Realizado</th>
                   <th className="col-lineas">Líneas</th>
                   <th className="col-estado">Estado</th>
                   <th className="col-resultado">Resultado</th>
@@ -566,6 +559,9 @@ function AuditorCostos({
                           </strong>
                         </div>
                       </td>
+
+                      <td><span className="cost-date-value">{formatoFechaCosto(costo.created_at)}</span></td>
+                      <td><span className="cost-date-value">{formatoFechaCosto(costo.fecha_realizado)}</span></td>
 
                       {/* LÍNEAS */}
 
