@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   obtenerDetallesCostoAdmin,
   obtenerConteoAnterior,
-  validarConteo,
   guardarConteoCosto
 } from '../../services/costos'
 
@@ -25,14 +24,12 @@ function ConteoAdmin({
   const [detalles, setDetalles] = useState([])
   const [cantidades, setCantidades] = useState({})
   const [factores, setFactores] = useState({})
-  const [resultados, setResultados] = useState({})
   const [noManifestados, setNoManifestados] = useState([])
   const [nuevoNoManifestado, setNuevoNoManifestado] = useState({ sku: '', cantidad: '', observacion: '' })
   const [busqueda, setBusqueda] = useState('')
 
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
-  const [validandoTodo, setValidandoTodo] = useState(false)
 
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
@@ -148,7 +145,7 @@ function ConteoAdmin({
 
           if (Number(numeroConteo) === 1) {
             valores = ['']
-            factor = 1
+            factor = Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
           }
 
           // --------------------------------------------------
@@ -247,14 +244,6 @@ function ConteoAdmin({
                   )
                 }
 
-                if (
-                  borrador.resultados &&
-                  typeof borrador.resultados === 'object'
-                ) {
-                  setResultados(
-                    borrador.resultados
-                  )
-                }
 
                 if (Array.isArray(borrador.noManifestados)) {
                   setNoManifestados(borrador.noManifestados)
@@ -357,7 +346,6 @@ function ConteoAdmin({
     const borrador = {
       cantidades,
       factores,
-      resultados,
       noManifestados,
       nuevoNoManifestado,
       busqueda,
@@ -381,7 +369,6 @@ function ConteoAdmin({
     claveBorrador,
     cantidades,
     factores,
-    resultados,
     noManifestados,
     nuevoNoManifestado,
     busqueda,
@@ -425,21 +412,6 @@ function ConteoAdmin({
       }
     )
 
-    // Al modificar una cantidad,
-    // la validación anterior deja
-    // de ser válida.
-
-    setResultados(
-      anterior => {
-        const copia = {
-          ...anterior
-        }
-
-        delete copia[detalleId]
-
-        return copia
-      }
-    )
   }
 
 
@@ -463,17 +435,6 @@ function ConteoAdmin({
       })
     )
 
-    setResultados(
-      anterior => {
-        const copia = {
-          ...anterior
-        }
-
-        delete copia[detalleId]
-
-        return copia
-      }
-    )
   }
 
 
@@ -543,17 +504,6 @@ function ConteoAdmin({
       }
     )
 
-    setResultados(
-      anterior => {
-        const copia = {
-          ...anterior
-        }
-
-        delete copia[detalleId]
-
-        return copia
-      }
-    )
   }
 
 
@@ -622,188 +572,8 @@ function ConteoAdmin({
 
 
   // ==========================================================
-  // VALIDAR UNA LÍNEA
-  // ==========================================================
-
-  async function validarLinea(
-    detalle
-  ) {
-    try {
-      setError('')
-      setMensaje('')
-
-      const lista =
-        cantidades[detalle.id] || []
-
-      const factor =
-        factores[detalle.id]
-
-      if (
-        lista.length === 0 ||
-        lista.some(
-          valor =>
-            valor === ''
-        )
-      ) {
-        throw new Error(
-          `Ingresa todas las cantidades del SKU ${detalle.sku}.`
-        )
-      }
-
-      const valores =
-        lista.map(
-          Number
-        )
-
-      if (
-        valores.some(
-          valor =>
-            !Number.isFinite(valor) ||
-            valor < 0
-        )
-      ) {
-        throw new Error(
-          `Las cantidades del SKU ${detalle.sku} no son válidas.`
-        )
-      }
-
-      const factorNumerico =
-        Number(factor)
-
-      if (
-        !Number.isFinite(
-          factorNumerico
-        ) ||
-        factorNumerico <= 0
-      ) {
-        throw new Error(
-          `El factor del SKU ${detalle.sku} debe ser mayor que cero.`
-        )
-      }
-
-      const resultado =
-        await validarConteo(
-          detalle.id,
-          valores,
-          factorNumerico
-        )
-
-      setResultados(
-        anterior => ({
-          ...anterior,
-          [detalle.id]:
-            resultado
-        })
-      )
-    } catch (errorValidacion) {
-      console.error(
-        'Error validando línea:',
-        errorValidacion
-      )
-
-      setError(
-        errorValidacion?.message ||
-        'No se pudo validar el producto.'
-      )
-    }
-  }
-
-
-  // ==========================================================
   // VALIDAR TODO
   // ==========================================================
-
-  async function validarTodo() {
-    try {
-      setValidandoTodo(true)
-      setError('')
-      setMensaje('')
-
-      const nuevosResultados = {}
-
-      for (const detalle of detalles) {
-        const lista =
-          cantidades[detalle.id] || []
-
-        const factor =
-          factores[detalle.id]
-
-        if (
-          lista.length === 0 ||
-          lista.some(
-            valor =>
-              valor === ''
-          )
-        ) {
-          throw new Error(
-            `Falta completar el SKU ${detalle.sku}.`
-          )
-        }
-
-        const valores =
-          lista.map(
-            Number
-          )
-
-        const factorNumerico =
-          Number(factor)
-
-        if (
-          valores.some(
-            valor =>
-              !Number.isFinite(valor) ||
-              valor < 0
-          )
-        ) {
-          throw new Error(
-            `Las cantidades del SKU ${detalle.sku} no son válidas.`
-          )
-        }
-
-        if (
-          !Number.isFinite(
-            factorNumerico
-          ) ||
-          factorNumerico <= 0
-        ) {
-          throw new Error(
-            `El factor del SKU ${detalle.sku} no es válido.`
-          )
-        }
-
-        const resultado =
-          await validarConteo(
-            detalle.id,
-            valores,
-            factorNumerico
-          )
-
-        nuevosResultados[detalle.id] =
-          resultado
-      }
-
-      setResultados(
-        nuevosResultados
-      )
-
-      setMensaje(
-        'Todas las líneas fueron validadas.'
-      )
-    } catch (errorValidacion) {
-      console.error(
-        'Error validando todo:',
-        errorValidacion
-      )
-
-      setError(
-        errorValidacion?.message ||
-        'No se pudieron validar todas las líneas.'
-      )
-    } finally {
-      setValidandoTodo(false)
-    }
-  }
-
 
   // ==========================================================
   // GUARDAR CONTEO
@@ -1070,57 +840,10 @@ function ConteoAdmin({
   // RESUMEN
   // ==========================================================
 
-  const resumen =
-    useMemo(
-      () => {
-        let completos = 0
-        let pendientes = 0
-        let conformes = 0
-        let diferencias = 0
-
-        detalles.forEach(
-          detalle => {
-            const resultado =
-              resultados[detalle.id]
-
-            if (resultado) {
-              completos++
-
-              if (
-                resultado.resultado ===
-                'conforme'
-              ) {
-                conformes++
-              } else if (
-                resultado.resultado ===
-                'diferencia'
-              ) {
-                diferencias++
-              }
-            } else {
-              pendientes++
-            }
-          }
-        )
-
-        return {
-          total:
-            detalles.length,
-
-          completos,
-
-          pendientes,
-
-          conformes,
-
-          diferencias
-        }
-      },
-      [
-        detalles,
-        resultados
-      ]
-    )
+  const resumen = {
+    total: detalles.length,
+    pendientes: detalles.length
+  }
 
 
   // ==========================================================
@@ -1198,28 +921,10 @@ function ConteoAdmin({
 
           <button
             type="button"
-            className="admin-conteo-btn-secundario"
-            onClick={validarTodo}
-            disabled={
-              validandoTodo ||
-              guardando
-            }
-          >
-            <span className="admin-conteo-btn-icon">
-              ✓
-            </span>
-
-            {validandoTodo ? <><span className="button-spinner" /> Validando...</> : 'Validar todo'}
-          </button>
-
-
-          <button
-            type="button"
             className="admin-conteo-btn-principal"
             onClick={guardar}
             disabled={
-              guardando ||
-              validandoTodo
+              guardando
             }
           >
             <span className="admin-conteo-btn-icon">
@@ -1329,27 +1034,6 @@ function ConteoAdmin({
         </div>
 
 
-        <div className="admin-conteo-resumen-item conforme">
-          <span className="admin-conteo-resumen-label">
-            Conformes
-          </span>
-
-          <strong>
-            {resumen.conformes}
-          </strong>
-        </div>
-
-
-        <div className="admin-conteo-resumen-item diferencia">
-          <span className="admin-conteo-resumen-label">
-            Diferencias
-          </span>
-
-          <strong>
-            {resumen.diferencias}
-          </strong>
-        </div>
-
       </section>
 
 
@@ -1360,12 +1044,16 @@ function ConteoAdmin({
       <section className="admin-conteo-toolbar">
 
         <div className="admin-conteo-search">
-
-          
+          <svg className="count-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+            <circle cx="10.8" cy="10.8" r="6.8" />
+            <path d="m16 16 4.2 4.2" />
+          </svg>
 
           <input
             type="text"
-            placeholder="Buscar SKU, descripción o ubicación..."
+            className="count-search-input"
+            placeholder="Buscar SKU, descripción o ubicación"
+            aria-label="Buscar producto por SKU, descripción o ubicación"
             value={busqueda}
             onChange={
               event =>
@@ -1458,13 +1146,6 @@ function ConteoAdmin({
                   Final
                 </th>
 
-                <th className="col-resultado">
-                  Resultado
-                </th>
-
-                <th className="col-accion">
-                  Acción
-                </th>
               </tr>
             </thead>
 
@@ -1486,9 +1167,6 @@ function ConteoAdmin({
                     calcularLocal(
                       detalle.id
                     )
-
-                  const resultado =
-                    resultados[detalle.id]
 
                   return (
                     <tr
@@ -1663,63 +1341,7 @@ function ConteoAdmin({
                       </td>
 
 
-                      {/* RESULTADO */}
 
-                      <td>
-
-                        {resultado ? (
-
-                          <span
-                            className={
-                              resultado.resultado ===
-                              'conforme'
-                                ? 'admin-conteo-resultado conforme'
-                                : 'admin-conteo-resultado diferencia'
-                            }
-                          >
-
-                            <span className="admin-conteo-resultado-dot" />
-
-                            {resultado.resultado ===
-                            'conforme'
-                              ? 'CONFORME'
-                              : 'DIFERENCIA'}
-
-                          </span>
-
-                        ) : (
-
-                          <span className="admin-conteo-pendiente">
-                            Pendiente
-                          </span>
-
-                        )}
-
-                      </td>
-
-
-                      {/* ACCIÓN */}
-
-                      <td>
-
-                        <button
-                          type="button"
-                          className="admin-conteo-validar"
-                          onClick={
-                            () =>
-                              validarLinea(
-                                detalle
-                              )
-                          }
-                          disabled={
-                            guardando ||
-                            validandoTodo
-                          }
-                        >
-                          ✓ Validar
-                        </button>
-
-                      </td>
 
                     </tr>
                   )

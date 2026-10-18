@@ -539,7 +539,6 @@ function AuditorDashboard() {
   const [costos, setCostos] = useState([])
   const [costoSeleccionado, setCostoSeleccionado] = useState(null)
   const [detalles, setDetalles] = useState([])
-  const [resultados, setResultados] = useState({})
   const [borradores, setBorradores] = useState({})
   const [noManifestados, setNoManifestados] = useState([])
 
@@ -550,7 +549,6 @@ function AuditorDashboard() {
   })
 
   const [borradorGuardado, setBorradorGuardado] = useState(false)
-  const [filtroResultado, setFiltroResultado] = useState('todos')
   const [busqueda, setBusqueda] = useState('')
   const [versionLimpieza, setVersionLimpieza] = useState(0)
   const [restauracionRealizada, setRestauracionRealizada] = useState(false)
@@ -766,11 +764,9 @@ function AuditorDashboard() {
 
       setCostoSeleccionado(costo)
       setDetalles([])
-      setResultados({})
       setBorradores({})
       setNoManifestados([])
       setBorradorGuardado(false)
-      setFiltroResultado(opciones.filtroResultado || 'todos')
       setBusqueda(opciones.busqueda || '')
       setLoadingDetalles(true)
 
@@ -822,14 +818,12 @@ function AuditorDashboard() {
       guardarSesionActual(usuarioId, {
         costoId: costo.id,
         numeroConteo,
-        busqueda: opciones.busqueda || '',
-        filtroResultado: opciones.filtroResultado || 'todos'
+        busqueda: opciones.busqueda || ''
       })
       sesionActualRef.current = {
         costoId: costo.id,
         numeroConteo,
-        busqueda: opciones.busqueda || '',
-        filtroResultado: opciones.filtroResultado || 'todos'
+        busqueda: opciones.busqueda || ''
       }
     } catch (err) {
       console.error(err)
@@ -864,7 +858,6 @@ function AuditorDashboard() {
 
         setCostoSeleccionado(null)
         setDetalles([])
-        setResultados({})
         setBorradores({})
         setNoManifestados([])
         limpiarSesionActual(usuarioId)
@@ -924,8 +917,7 @@ function AuditorDashboard() {
     setRestauracionRealizada(true)
 
     seleccionarCosto(costo, {
-      busqueda: sesion.busqueda || '',
-      filtroResultado: sesion.filtroResultado || 'todos'
+      busqueda: sesion.busqueda || ''
     })
     }
 
@@ -942,26 +934,11 @@ function AuditorDashboard() {
   function volverCostos() {
     setCostoSeleccionado(null)
     setDetalles([])
-    setResultados({})
     setBorradores({})
     setNoManifestados([])
     setBusqueda('')
-    setFiltroResultado('todos')
     sesionActualRef.current = null
     limpiarSesionActual(usuarioId)
-  }
-
-  // ==========================================================
-  // MANEJAR RESULTADO INDIVIDUAL
-  // ==========================================================
-
-  function manejarResultado(detalleId, resultado) {
-    setResultados(anterior => ({
-      ...anterior,
-      [detalleId]: resultado
-    }))
-
-    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -976,18 +953,32 @@ function AuditorDashboard() {
       [datos.detalleId]: datos
     }))
 
-    setResultados(anterior => {
-      const nuevo = { ...anterior }
-      delete nuevo[datos.detalleId]
-      return nuevo
-    })
-
     setBorradorGuardado(true)
 
     if (sesionActualRef.current) {
       guardarSesionActual(usuarioId, sesionActualRef.current)
     }
   }, [usuarioId])
+
+  function obtenerResultadoConteo(detalleId) {
+    const borrador = borradores[detalleId]
+    if (!borrador || !Array.isArray(borrador.cantidades) || borrador.cantidades.length === 0) {
+      return null
+    }
+
+    const cantidades = borrador.cantidades.map(valor => {
+      if (valor === '' || valor === null || valor === undefined) return null
+      const numero = Number(valor)
+      return Number.isFinite(numero) && numero >= 0 ? numero : null
+    })
+    const factor = Number(borrador.factor)
+
+    if (cantidades.some(valor => valor === null) || !Number.isFinite(factor) || factor <= 0) {
+      return null
+    }
+
+    return cantidades.reduce((suma, valor) => suma + valor, 0) * factor
+  }
 
   // ==========================================================
   // GUARDAR SESIÓN CON FILTROS
@@ -999,9 +990,7 @@ function AuditorDashboard() {
     const sesion = {
       costoId: costoSeleccionado.id,
       numeroConteo: Number(costoSeleccionado.conteo_habilitado),
-      busqueda: nuevoValor.busqueda ?? busqueda,
-      filtroResultado:
-        nuevoValor.filtroResultado ?? filtroResultado
+      busqueda: nuevoValor.busqueda ?? busqueda
     }
     sesionActualRef.current = sesion
     guardarSesionActual(usuarioId, sesion)
@@ -1460,7 +1449,6 @@ function AuditorDashboard() {
       // ------------------------------------------------------
 
       setDetalles([])
-      setResultados({})
       setBorradores({})
       setNoManifestados([])
       setCostoSeleccionado(null)
@@ -1500,28 +1488,14 @@ function AuditorDashboard() {
       )
     }
 
-    if (filtroResultado !== 'todos') {
-      lista = lista.filter(
-        detalle => resultados[detalle.id] === filtroResultado
-      )
-    }
-
     return lista
-  }, [detalles, busqueda, filtroResultado, resultados])
+  }, [detalles, busqueda])
 
   // ==========================================================
   // CONTADORES
   // ==========================================================
 
   const totalDetalles = detalles.length
-
-  const totalConformes = Object.values(resultados).filter(
-    resultado => resultado === 'conforme'
-  ).length
-
-  const totalDiferencias = Object.values(resultados).filter(
-    resultado => resultado === 'diferencia'
-  ).length
 
   // ==========================================================
   // LISTA PRINCIPAL DE COSTOS
@@ -1702,24 +1676,9 @@ function AuditorDashboard() {
             <strong>{totalDetalles}</strong>
           </div>
 
-          <div className="summary-item conforme">
-            <span className="summary-item-label">Conformes</span>
-            <strong>{totalConformes}</strong>
-          </div>
-
-          <div className="summary-item diferencia">
-            <span className="summary-item-label">Diferencias</span>
-            <strong>{totalDiferencias}</strong>
-          </div>
-
           <div className="summary-item pendiente">
             <span className="summary-item-label">Pendientes</span>
-            <strong>
-              {Math.max(
-                totalDetalles - totalConformes - totalDiferencias,
-                0
-              )}
-            </strong>
+            <strong>{totalDetalles}</strong>
           </div>
         </section>
 
@@ -1727,10 +1686,16 @@ function AuditorDashboard() {
 
         <section className="auditor-tools">
           <div className="auditor-search">
+            <svg className="count-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <circle cx="10.8" cy="10.8" r="6.8" />
+              <path d="m16 16 4.2 4.2" />
+            </svg>
             <input
               type="text"
+              className="count-search-input"
               value={busqueda}
-              placeholder="Buscar SKU, descripción o ubicación..."
+              placeholder="Buscar SKU, descripción o ubicación"
+              aria-label="Buscar producto por SKU, descripción o ubicación"
               onChange={e => {
                 const valor = e.target.value
                 setBusqueda(valor)
@@ -1752,59 +1717,6 @@ function AuditorDashboard() {
                 ×
               </button>
             )}
-          </div>
-
-          <div className="auditor-filter-group">
-            <button
-              type="button"
-              className={
-                filtroResultado === 'todos'
-                  ? 'auditor-filter active'
-                  : 'auditor-filter'
-              }
-              onClick={() => {
-                setFiltroResultado('todos')
-                guardarSesionConFiltros({
-                  filtroResultado: 'todos'
-                })
-              }}
-            >
-              Todos
-            </button>
-
-            <button
-              type="button"
-              className={
-                filtroResultado === 'conforme'
-                  ? 'auditor-filter active conforme'
-                  : 'auditor-filter'
-              }
-              onClick={() => {
-                setFiltroResultado('conforme')
-                guardarSesionConFiltros({
-                  filtroResultado: 'conforme'
-                })
-              }}
-            >
-              Conformes
-            </button>
-
-            <button
-              type="button"
-              className={
-                filtroResultado === 'diferencia'
-                  ? 'auditor-filter active diferencia'
-                  : 'auditor-filter'
-              }
-              onClick={() => {
-                setFiltroResultado('diferencia')
-                guardarSesionConFiltros({
-                  filtroResultado: 'diferencia'
-                })
-              }}
-            >
-              Diferencias
-            </button>
           </div>
 
           <div className="auditor-search-info">
@@ -1853,6 +1765,7 @@ function AuditorDashboard() {
                     <th className="col-um">UM</th>
                     <th className="col-ubicacion">Ubicación</th>
                     <th className="col-conteo">Conteo</th>
+                    <th className="col-resultado">Resultado</th>
                   </tr>
                 </thead>
 
@@ -1890,14 +1803,17 @@ function AuditorDashboard() {
                           costoId={costoSeleccionado.id}
                           usuarioId={usuarioId}
                           numeroConteo={numeroConteo}
-                          onRegistrado={datos =>
-                            manejarResultado(
-                              datos.detalleId,
-                              datos.resultado
-                            )
-                          }
+                          validando={guardandoCosto}
                           onCambio={manejarCambio}
                         />
+                      </td>
+                      <td className="auditor-result-cell">
+                        {(() => {
+                          const resultado = obtenerResultadoConteo(detalle.id)
+                          return resultado === null
+                            ? <span className="auditor-result-pending">Pendiente</span>
+                            : <output className="auditor-result-value">{new Intl.NumberFormat('es-PE', { maximumFractionDigits: 4 }).format(resultado)}</output>
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -2097,12 +2013,12 @@ function AuditorDashboard() {
               type="button"
               className="btn-guardar-costo"
               onClick={guardarCosto}
-              disabled={guardandoCosto || loadingDetalles}
+              disabled={guardandoCosto || loadingDetalles || !conexionOnline}
             >
               {guardandoCosto ? (
                 <>
                   <span className="button-spinner" />
-                  Guardando...
+                  Validando y guardando...
                 </>
               ) : (
                 <>

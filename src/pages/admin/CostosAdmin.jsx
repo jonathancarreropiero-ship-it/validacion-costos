@@ -11,6 +11,7 @@ import {
 
 import StatusBadge from '../../components/StatusBadge'
 import CostListFilters from '../../components/CostListFilters'
+import ScrollableTable from '../../components/ScrollableTable'
 import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 import DetalleCosto from './DetalleCosto'
@@ -126,6 +127,7 @@ function CostosAdmin({ usuarioId }) {
   const [fechaFiltro, setFechaFiltro] = useState('')
   const [modoFechaFiltro, setModoFechaFiltro] = useState('subido')
   const [estadoFiltro, setEstadoFiltro] = useState('todos')
+  const [resultadoFiltro, setResultadoFiltro] = useState('todos')
   const [costoSeleccionado, setCostoSeleccionado] = useState(null)
   const [conteoAdmin, setConteoAdmin] = useState(null)
   const [habilitando, setHabilitando] = useState(null)
@@ -882,15 +884,17 @@ function CostosAdmin({ usuarioId }) {
     busqueda,
     fecha: fechaFiltro,
     modoFecha: modoFechaFiltro,
-    estado: estadoFiltro
+    estado: estadoFiltro,
+    resultado: resultadoFiltro
   })
-  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos')
+  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos' || resultadoFiltro !== 'todos')
 
   function limpiarFiltrosLista() {
     manejarBusqueda('')
     setFechaFiltro('')
     setModoFechaFiltro('subido')
     setEstadoFiltro('todos')
+    setResultadoFiltro('todos')
   }
 
 
@@ -1028,6 +1032,8 @@ function CostosAdmin({ usuarioId }) {
           onModoFechaChange={setModoFechaFiltro}
           estado={estadoFiltro}
           onEstadoChange={setEstadoFiltro}
+          resultado={resultadoFiltro}
+          onResultadoChange={setResultadoFiltro}
           onLimpiar={limpiarFiltrosLista}
         />
 
@@ -1089,8 +1095,11 @@ function CostosAdmin({ usuarioId }) {
       {/* TABLA */}
 
       {!loading && costosFiltrados.length > 0 && (
-        <div className="costos-table-wrapper">
-          <table className="costos-table">
+        <ScrollableTable
+          className="costos-table-wrapper"
+          tableClassName="costos-table"
+          ariaLabel="costos registrados"
+        >
             <thead>
               <tr>
                 <th>Número</th>
@@ -1338,8 +1347,7 @@ function CostosAdmin({ usuarioId }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ScrollableTable>
       )}
 
       {aviso && (

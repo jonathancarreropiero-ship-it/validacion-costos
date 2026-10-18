@@ -378,6 +378,38 @@ button:disabled {
   width: 100%;
 }
 
+.auditor-table {
+  min-width: 980px;
+}
+.auditor-table-wrapper {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.auditor-result-cell {
+  min-width: 150px;
+  text-align: center;
+}
+.auditor-result-value {
+  display: inline-flex;
+  min-width: 96px;
+  justify-content: center;
+  padding: 9px 14px;
+  border: 1px solid #b9cff2;
+  border-radius: 999px;
+  background: #edf4ff;
+  color: #214d91;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.auditor-result-pending {
+  color: #6c7b91;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1433,6 +1465,27 @@ html { scroll-behavior: smooth; }
 body { min-width: 320px; background: radial-gradient(ellipse at 12% 0%, rgba(36,87,214,.045), transparent 34%), var(--bg); color: var(--text); }
 button, input, select, textarea { transition: color var(--transition), background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition); }
 button { -webkit-tap-highlight-color: transparent; }
+
+/* Botón de retorno consistente en las vistas de administración y auditoría. */
+.detalle-costo-container .btn-volver,
+.auditor-cost-heading .btn-volver {
+  border: 1px solid #2857a5;
+  background: linear-gradient(135deg, #3c6fc2 0%, #244f9d 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(36, 79, 157, .2);
+}
+.detalle-costo-container .btn-volver:hover,
+.auditor-cost-heading .btn-volver:hover {
+  border-color: #1f478e;
+  background: linear-gradient(135deg, #315fae 0%, #1e4388 100%);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(36, 79, 157, .28);
+}
+.detalle-costo-container .btn-volver:focus-visible,
+.auditor-cost-heading .btn-volver:focus-visible {
+  outline: 3px solid rgba(55, 105, 190, .28);
+  outline-offset: 2px;
+}
 :focus-visible { outline: 3px solid rgba(36,87,214,.28); outline-offset: 2px; }
 :is(.app-container,.auditor-page,.admin-dashboard,.page-container,.nuevo-costo,.detalle-costo,.admin-conteo,.auditor-costos) { gap: clamp(16px,2vw,24px); padding: clamp(16px,2.6vw,32px); }
 :is(.auditor-topbar,.auditor-dashboard-header,.admin-dashboard-header,.page-header,.auditor-cost-header,.admin-conteo-header,.nuevo-costo-header,.detalle-costo-header) { border: 1px solid var(--border-light); border-top: 3px solid var(--primary); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
@@ -1522,12 +1575,12 @@ button { -webkit-tap-highlight-color: transparent; }
 .login-spinner,.button-spinner,.admin-conteo-spinner,.auditor-loading-spinner,.costos-loading-spinner,.conteo-inline-loading-spinner{display:inline-block;flex:0 0 auto;border:3px solid rgba(36,87,214,.16);border-top-color:currentColor;border-radius:50%;animation:uiSpin .75s linear infinite;vertical-align:middle}.login-spinner{width:18px;height:18px;border-color:rgba(255,255,255,.32);border-top-color:#fff}.button-spinner{width:15px;height:15px;border-width:2px}.admin-conteo-spinner,.auditor-loading-spinner,.costos-loading-spinner,.conteo-inline-loading-spinner{width:38px;height:38px;border-width:3px;color:var(--primary)}.admin-conteo-cargando,.auditor-loading-state,.costos-loading-state{display:flex;min-height:220px;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--text-muted)}.admin-conteo-cargando span,.auditor-loading-state span,.costos-loading-state span{font-weight:650}
 
 /* Filtros y columnas de fechas compartidos por admin y auditor. */
-.cost-list-filters{display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(290px,1.4fr) minmax(160px,.7fr) auto;align-items:end;gap:12px;flex:1;min-width:0;}
+.cost-list-filters{display:grid;grid-template-columns:minmax(200px,1.1fr) minmax(300px,1.35fr) minmax(165px,.8fr) minmax(170px,.85fr) auto;align-items:end;gap:12px;flex:1;min-width:0;}
 .auditor-costos-toolbar{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;width:100%;padding:16px 18px;border:1px solid var(--border-light);border-radius:var(--radius-md);background:var(--surface);box-shadow:var(--shadow-sm);}
 .auditor-costos-toolbar .cost-list-filters{width:100%;}
-.cost-list-search,.cost-date-filter>label,.cost-state-filter{display:grid;gap:5px;min-width:0;}
-.cost-date-filter>label>span,.cost-state-filter>span{color:var(--text-muted);font-size:11px;font-weight:700;}
-.cost-list-search input,.cost-date-filter input,.cost-state-filter select{min-width:0;height:42px;}
+.cost-list-search,.cost-date-filter>label,.cost-state-filter,.cost-result-filter{display:grid;gap:5px;min-width:0;}
+.cost-date-filter>label>span,.cost-state-filter>span,.cost-result-filter>span{color:var(--text-muted);font-size:11px;font-weight:700;}
+.cost-list-search input,.cost-date-filter input,.cost-state-filter select,.cost-result-filter select{min-width:0;height:42px;}
 .cost-date-filter{display:grid;grid-template-columns:minmax(130px,1fr) auto;align-items:end;gap:8px;min-width:0;}
 .cost-date-mode{display:flex;gap:4px;padding:3px;border:1px solid var(--border-light);border-radius:10px;background:#f7f9fc;}
 .cost-date-mode button{min-height:34px;padding:5px 10px;border:0;border-radius:7px;background:transparent;color:var(--text-muted);box-shadow:none;font-size:11px;white-space:nowrap;}
@@ -1659,7 +1712,7 @@ button { -webkit-tap-highlight-color: transparent; }
 
 /* Ajuste visual compartido: filtros legibles, columnas alineadas y tablas desplazables en móvil. */
 .cost-list-filters {
-  grid-template-columns: minmax(220px, 1.15fr) minmax(320px, 1.45fr) minmax(180px, .8fr) auto;
+  grid-template-columns: minmax(200px, 1.1fr) minmax(300px, 1.35fr) minmax(165px, .8fr) minmax(170px, .85fr) auto;
   gap: 14px;
   align-items: end;
 }
@@ -1682,7 +1735,8 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .cost-list-search input,
 .cost-date-filter input,
-.cost-state-filter select {
+.cost-state-filter select,
+.cost-result-filter select {
   width: 100%;
   min-width: 0;
   height: 44px;
@@ -1700,7 +1754,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .cost-date-filter input[type="date"] { color-scheme: light; }
 .cost-list-search input:focus,
 .cost-date-filter input:focus,
-.cost-state-filter select:focus {
+.cost-state-filter select:focus,
+.cost-result-filter select:focus {
   border-color: #527bd0;
   outline: 0;
   background: #fff;
@@ -1913,3 +1968,258 @@ button { -webkit-tap-highlight-color: transparent; }
   .auditor-alert > span:nth-child(2) { flex: 1 1 calc(100% - 40px); }
   .auditor-alert-action { width: 100%; margin-left: 36px; }
 }
+
+/* Ajustes de tablas y superficies para la actualización del flujo */
+.costos-table-wrapper,
+.auditor-costos-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #5279bd #dce7f7;
+}
+.costos-table-wrapper::-webkit-scrollbar,
+.auditor-costos-table-wrapper::-webkit-scrollbar { height: 10px; }
+.costos-table-wrapper::-webkit-scrollbar-track,
+.auditor-costos-table-wrapper::-webkit-scrollbar-track { background: #dce7f7; border-radius: 8px; }
+.costos-table-wrapper::-webkit-scrollbar-thumb,
+.auditor-costos-table-wrapper::-webkit-scrollbar-thumb { background: #5279bd; border: 2px solid #dce7f7; border-radius: 8px; }
+.auditor-costos-table { min-width: 1120px; }
+.auditor-costos-table th:nth-child(1), .auditor-costos-table td:nth-child(1) { width: 12%; }
+.auditor-costos-table th:nth-child(2), .auditor-costos-table td:nth-child(2) { width: 12%; }
+.auditor-costos-table th:nth-child(3), .auditor-costos-table td:nth-child(3) { width: 12%; }
+.auditor-costos-table th:nth-child(4), .auditor-costos-table td:nth-child(4) { width: 24%; }
+.auditor-costos-table th:nth-child(5), .auditor-costos-table td:nth-child(5) { width: 14%; }
+.auditor-costos-table th:nth-child(6), .auditor-costos-table td:nth-child(6) { width: 12%; }
+.auditor-costos-table th:nth-child(7), .auditor-costos-table td:nth-child(7) { width: 14%; }
+
+:is(.auditor-dashboard-header, .admin-dashboard-page-heading, .nuevo-costo-header) {
+  background: linear-gradient(125deg, #fff 0%, #f4f8ff 58%, #eaf1fc 100%);
+}
+:is(.auditor-table-container, .admin-conteo-tabla-card, .costos-table-wrapper, .auditor-costos-table-wrapper) {
+  border-color: #d0def3;
+  box-shadow: 0 8px 24px rgba(35, 73, 146, .07);
+}
+:is(.costos-table, .auditor-costos-table) tbody tr:nth-child(even) { background-color: #f8faff; }
+:is(.costos-table, .auditor-costos-table) tbody tr:hover { background-color: #edf4ff; }
+
+/* Buscador de productos durante el conteo */
+:is(.auditor-search, .admin-conteo-search) {
+  flex: 1 1 min(100%, 520px);
+  width: min(100%, 720px);
+  max-width: 720px;
+  position: relative;
+}
+.count-search-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 16px;
+  width: 19px;
+  height: 19px;
+  transform: translateY(-50%);
+  stroke: #315fae;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.count-search-input {
+  height: 48px !important;
+  padding-left: 46px !important;
+  padding-right: 44px !important;
+  border-color: #c6d7f2 !important;
+  border-radius: 13px !important;
+  background: linear-gradient(135deg, #fff 0%, #f4f8ff 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 3px 10px rgba(32,72,142,.05);
+  font-size: 14px !important;
+}
+.count-search-input:focus {
+  border-color: #4b75bd !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 4px rgba(59,102,181,.13), 0 6px 16px rgba(32,72,142,.08) !important;
+}
+.count-search-input::placeholder { color: #7184a3; }
+.admin-conteo-search-clear,
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid #d0def3;
+  border-radius: 9px;
+  background: #eaf1fc;
+  color: #315b9e;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+.admin-conteo-search-clear:hover,
+.search-clear:hover { background: #dce8f8; }
+@media (max-width: 650px) {
+  :is(.auditor-search, .admin-conteo-search) { width: 100%; max-width: none; }
+  .count-search-input { height: 46px !important; }
+}
+
+/* Evita que la tabla ensanche sus contenedores flex y quede recortada */
+:is(.admin-dashboard, .admin-dashboard-main, .admin-dashboard-content,
+    .costos-admin, .auditor-page, .auditor-main, .auditor-costos,
+    .auditor-costos-table-card) {
+  min-width: 0;
+  max-width: 100%;
+}
+.admin-dashboard-main,
+.admin-dashboard-content,
+.costos-admin,
+.auditor-main,
+.auditor-costos {
+  width: 100%;
+}
+.costos-table-wrapper,
+.auditor-costos-table-wrapper {
+  display: block;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: auto;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+}
+.costos-table { width: 1900px; min-width: 1900px; }
+.auditor-costos-table { width: 1480px; min-width: 1480px; }
+
+/* Barra horizontal siempre visible antes de las tablas anchas */
+.scrollable-table-shell {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.scrollable-table-sticky-control {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 1px 12px;
+  border: 1px solid #d4e0f1;
+  border-radius: 12px;
+  background: rgba(246, 249, 254, .97);
+  box-shadow: 0 4px 12px rgba(30, 59, 105, .12);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.scrollable-table-control {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin: 0;
+  padding: 7px 0;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+.scrollable-table-control::-webkit-slider-runnable-track {
+  height: 9px;
+  border: 1px solid #c5d5ec;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    #2f5fae 0%,
+    #4b79c5 var(--scroll-progress, 0%),
+    #e2eaf6 var(--scroll-progress, 0%),
+    #e2eaf6 100%);
+  box-shadow: inset 0 1px 2px rgba(24, 53, 99, .12);
+}
+.scrollable-table-control::-moz-range-track {
+  height: 9px;
+  border: 1px solid #c5d5ec;
+  border-radius: 999px;
+  background: #e6edf8;
+}
+.scrollable-table-control::-moz-range-progress {
+  height: 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2f5fae, #4b79c5);
+}
+.scrollable-table-control::-webkit-slider-thumb {
+  width: 40px;
+  height: 20px;
+  margin-top: -7px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4778c5, #244f98);
+  box-shadow: 0 2px 7px rgba(24, 58, 116, .32);
+  transition: box-shadow .16s ease, filter .16s ease;
+}
+.scrollable-table-control::-moz-range-thumb {
+  width: 34px;
+  height: 14px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4778c5, #244f98);
+  box-shadow: 0 2px 7px rgba(24, 58, 116, .32);
+  transition: box-shadow .16s ease, filter .16s ease;
+}
+.scrollable-table-control:hover::-webkit-slider-thumb,
+.scrollable-table-control:hover::-moz-range-thumb { filter: brightness(1.08); box-shadow: 0 3px 10px rgba(24, 58, 116, .4); }
+.scrollable-table-control:active::-webkit-slider-thumb,
+.scrollable-table-control:active::-moz-range-thumb { filter: brightness(.94); }
+.scrollable-table-control:focus { box-shadow: none !important; }
+.scrollable-table-control:focus-visible { outline: 3px solid rgba(49,95,174,.25); outline-offset: 1px; border-radius: 8px; }
+.scrollable-table-control:disabled { cursor: default; opacity: .55; }
+.scrollable-table-viewport {
+  min-width: 0;
+  max-width: 100%;
+  scroll-behavior: auto !important;
+  scrollbar-width: none;
+}
+.scrollable-table-viewport::-webkit-scrollbar { display: none; }
+
+@media (max-width: 760px) {
+  .scrollable-table-sticky-control {
+    position: static;
+    padding: 1px 8px;
+  }
+}
+
+:is(.costos-table, .auditor-costos-table, .admin-conteo-tabla, .auditor-table) thead th {
+  background: #e6eef9 !important;
+  background-image: none !important;
+  color: #203f6b !important;
+  border-bottom: 2px solid #3f68a5 !important;
+  box-shadow: inset 0 1px 0 #f8fbff;
+}
+
+/* Azul más presente y suave para las tablas de captura de conteo. */
+:is(.admin-conteo-tabla, .auditor-table) thead th {
+  background: #dce8f7 !important;
+  color: #1f416f !important;
+  border-right: 1px solid #c8d8ee;
+  border-bottom-color: #557db6 !important;
+}
+:is(.admin-conteo-tabla, .auditor-table) tbody tr {
+  border-bottom: 1px solid #dfe8f4;
+}
+:is(.admin-conteo-tabla, .auditor-table) tbody tr:nth-child(even) {
+  background-color: #f4f8fe;
+}
+:is(.admin-conteo-tabla, .auditor-table) tbody tr:hover {
+  background-color: #eaf2fd;
+}
+

@@ -7,6 +7,12 @@ export function normalizarResultadoCosto(resultado) {
   return normalizado === 'diferencia' ? 'no_conforme' : normalizado
 }
 
+export function obtenerCategoriaResultadoCosto(costo) {
+  const resultado = normalizarResultadoCosto(costo?.resultado)
+  if (resultado === 'conforme' || resultado === 'no_conforme') return resultado
+  return costo?.numero_ultimo_conteo ? 'pendiente' : 'sin_conteo'
+}
+
 export function obtenerFechaLocal(valor) {
   if (!valor) return ''
   const fecha = new Date(valor)
@@ -31,13 +37,14 @@ export function formatoFechaCosto(valor) {
   }).format(fecha)
 }
 
-export function filtrarListaCostos(costos, { busqueda, fecha, modoFecha, estado }) {
+export function filtrarListaCostos(costos, { busqueda, fecha, modoFecha, estado, resultado }) {
   const texto = String(busqueda || '').trim().toLowerCase()
 
   return (costos || []).filter(costo => {
     if (texto && !String(costo.numero_costo ?? '').toLowerCase().includes(texto)) return false
 
     if (estado && estado !== 'todos' && String(costo.estado || '').toLowerCase() !== estado) return false
+    if (resultado && resultado !== 'todos' && obtenerCategoriaResultadoCosto(costo) !== resultado) return false
 
     if (modoFecha === 'realizado') {
       const resultado = normalizarResultadoCosto(costo.resultado)

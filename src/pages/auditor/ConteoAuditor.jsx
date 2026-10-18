@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-  obtenerConteoAnterior,
-  validarConteo
-} from '../../services/costos'
+import { obtenerConteoAnterior } from '../../services/costos'
 
 import {
   obtenerAuditoriaOffline
@@ -57,17 +54,13 @@ function ConteoAuditor({
   numeroConteo,
   costoId,
   usuarioId,
-  onRegistrado,
+  validando = false,
   onCambio
 }) {
 
   const [cantidades, setCantidades] = useState([''])
   const [factor, setFactor] = useState('1')
-  const [resultado, setResultado] = useState(null)
-  const [, setCantidadTotal] = useState(null)
-  const [cantidadFinal, setCantidadFinal] = useState(null)
   const [loadingAnterior, setLoadingAnterior] = useState(false)
-  const [validando, setValidando] = useState(false)
   const [error, setError] = useState('')
   const [borradorGuardado, setBorradorGuardado] = useState(false)
   const onCambioRef = useRef(onCambio)
@@ -183,9 +176,6 @@ function ConteoAuditor({
     async function cargarConteo() {
 
       setError('')
-      setResultado(null)
-      setCantidadTotal(null)
-      setCantidadFinal(null)
       setBorradorGuardado(false)
 
       // ------------------------------------------------------
@@ -245,11 +235,11 @@ function ConteoAuditor({
 
         setCantidades([''])
 
-        setFactor('1')
+        setFactor(String(Number(detalle.factor) > 0 ? detalle.factor : 1))
 
         informarCambio(
           [''],
-          1
+          Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
         )
 
         return
@@ -308,11 +298,11 @@ function ConteoAuditor({
 
           setCantidades([''])
 
-          setFactor('1')
+          setFactor(String(Number(detalle.factor) > 0 ? detalle.factor : 1))
 
           informarCambio(
             [''],
-            1
+            Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
           )
 
         }
@@ -350,6 +340,7 @@ function ConteoAuditor({
 
   }, [
     detalle.id,
+    detalle.factor,
     numeroConteo,
     costoId,
     usuarioId,
@@ -385,12 +376,6 @@ const esNumeroPermitido = valor => {
 
     setCantidades(nuevas)
 
-    setResultado(null)
-
-    setCantidadTotal(null)
-
-    setCantidadFinal(null)
-
     setError('')
 
     informarCambio(
@@ -416,12 +401,6 @@ const esNumeroPermitido = valor => {
     }
 
     setFactor(valor)
-
-    setResultado(null)
-
-    setCantidadTotal(null)
-
-    setCantidadFinal(null)
 
     setError('')
 
@@ -449,12 +428,6 @@ const esNumeroPermitido = valor => {
     ]
 
     setCantidades(nuevas)
-
-    setResultado(null)
-
-    setCantidadTotal(null)
-
-    setCantidadFinal(null)
 
     setError('')
 
@@ -487,12 +460,6 @@ const esNumeroPermitido = valor => {
 
     setCantidades(nuevas)
 
-    setResultado(null)
-
-    setCantidadTotal(null)
-
-    setCantidadFinal(null)
-
     setError('')
 
     informarCambio(
@@ -504,152 +471,6 @@ const esNumeroPermitido = valor => {
       nuevas,
       factor
     )
-
-  }
-
-  // ==========================================================
-  // VALIDAR
-  // ==========================================================
-
-  const validarConteoActual = async () => {
-
-    setError('')
-
-    const cantidadesNumericas =
-      cantidades.map(
-        valor => Number(valor)
-      )
-
-    if (
-      cantidades.some(
-        valor =>
-          valor === '' ||
-          valor === null ||
-          valor === undefined
-      )
-    ) {
-
-      setError(
-        'Completa todas las cantidades antes de validar.'
-      )
-
-      return
-
-    }
-
-    if (
-      cantidadesNumericas.some(
-        cantidad =>
-          Number.isNaN(cantidad) ||
-          cantidad < 0
-      )
-    ) {
-
-      setError(
-        'Las cantidades deben ser números válidos.'
-      )
-
-      return
-
-    }
-
-    const factorNumerico =
-      Number(factor)
-
-    if (
-      Number.isNaN(factorNumerico) ||
-      factorNumerico <= 0
-    ) {
-
-      setError(
-        'El factor debe ser mayor que 0.'
-      )
-
-      return
-
-    }
-
-    try {
-
-      setValidando(true)
-
-      const respuesta =
-        await validarConteo(
-          detalle.id,
-          cantidadesNumericas,
-          factorNumerico
-        )
-
-      setCantidadTotal(
-        respuesta.cantidadTotal
-      )
-
-      setCantidadFinal(
-        respuesta.cantidadFinal
-      )
-
-      setResultado(
-        respuesta.resultado
-      )
-
-      if (onRegistrado) {
-
-        onRegistrado({
-
-          detalleId: detalle.id,
-
-          numeroConteo,
-
-          cantidades:
-            cantidadesNumericas,
-
-          factor:
-            factorNumerico,
-
-          cantidadTotal:
-            respuesta.cantidadTotal,
-
-          cantidadFinal:
-            respuesta.cantidadFinal,
-
-          resultado:
-            respuesta.resultado
-
-        })
-
-      }
-
-      await guardarBorradorLocal(
-
-        cantidadesNumericas.map(
-          cantidad =>
-            String(cantidad)
-        ),
-
-        String(factorNumerico)
-
-      )
-
-    } catch (err) {
-
-      console.error(err)
-
-      setError(
-        err?.message ||
-        'No se pudo validar el conteo.'
-      )
-
-      setResultado(null)
-
-      setCantidadTotal(null)
-
-      setCantidadFinal(null)
-
-    } finally {
-
-      setValidando(false)
-
-    }
 
   }
 
@@ -861,154 +682,6 @@ const esNumeroPermitido = valor => {
         />
 
       </div>
-
-      {/* VALIDAR */}
-
-      <button
-
-        type="button"
-
-        className="btn-validar-sku"
-
-        onClick={validarConteoActual}
-
-        disabled={validando}
-
-      >
-
-        {validando ? (
-
-          <>
-
-            <span className="btn-validar-spinner" />
-
-            Validando...
-
-          </>
-
-        ) : (
-
-          <>
-
-            <span className="btn-validar-icon">
-
-              ✓
-
-            </span>
-
-            Validar
-
-          </>
-
-        )}
-
-      </button>
-
-      {/* RESULTADO */}
-
-      {resultado && (
-
-        <span
-
-          className={
-
-            resultado === 'conforme'
-
-              ? 'resultado-badge conforme'
-
-              : 'resultado-badge diferencia'
-
-          }
-
-        >
-
-          <span className="resultado-badge-dot" />
-
-          {resultado === 'conforme'
-
-            ? 'CONFORME'
-
-            : 'DIFERENCIA'}
-
-        </span>
-
-      )}
-
-      {/* CANTIDAD FINAL */}
-
-      {resultado &&
-
-        cantidadFinal !== null && (
-
-          <div
-
-            className="conteo-final-info"
-
-            style={{
-
-              display: 'flex',
-
-              alignItems: 'center',
-
-              justifyContent: 'space-between',
-
-              background: '#f1f5f9',
-
-              border: '1px solid #e2e8f0',
-
-              borderRadius: '6px',
-
-              padding: '8px 12px',
-
-              marginTop: '4px'
-
-            }}
-
-          >
-
-            <span
-
-              className="conteo-final-label"
-
-              style={{
-
-                fontSize: '11px',
-
-                fontWeight: '750',
-
-                color: '#64748b',
-
-                textTransform: 'uppercase'
-
-              }}
-
-            >
-
-              Cantidad Final
-
-            </span>
-
-            <strong
-
-              style={{
-
-                fontSize: '15px',
-
-                color: '#0f172a',
-
-                fontWeight: '800'
-
-              }}
-
-            >
-
-              {cantidadFinal}
-
-            </strong>
-
-          </div>
-
-        )}
 
       {/* ERROR */}
 

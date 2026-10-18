@@ -46,12 +46,15 @@ export async function crearCosto(numeroCosto, filas) {
       ''
     ).trim()
 
+    const factor = fila.Factor ?? fila.factor ?? 1
+
     return {
       sku,
       descripcion,
       cantidad,
       um,
-      ubicacion
+      ubicacion,
+      factor
     }
   })
 
@@ -79,14 +82,19 @@ export async function crearCosto(numeroCosto, filas) {
 
   const detalles = filasNormalizadas.map((fila) => {
     const cantidadFisica = Number(fila.cantidad)
+    const factor = Number(fila.factor)
 
     if (
       !Number.isFinite(cantidadFisica) ||
       cantidadFisica < 0
     ) {
       throw new Error(
-        `La cantidad del SKU ${fila.sku} no es válida.`
+        `La cantidad "${String(fila.cantidad ?? '')}" del SKU ${fila.sku} no es válida.`
       )
+    }
+
+    if (!Number.isFinite(factor) || factor <= 0) {
+      throw new Error(`El factor del SKU ${fila.sku} no es válido.`)
     }
 
     return {
@@ -97,7 +105,7 @@ export async function crearCosto(numeroCosto, filas) {
       cantidad_fisica: cantidadFisica,
       conteo: [],
       cantidad: 0,
-      factor: 1,
+      factor,
       cantidad_final: 0,
       comentarios: null,
       conteo_actual: 1
@@ -500,7 +508,7 @@ export async function obtenerDetallesAuditor(
     `)
     .in('detalle_costo_id', detalleIds)
     .eq('numero_conteo', conteoAnterior)
-    .eq('resultado', 'diferencia')
+    .in('resultado', ['diferencia', 'no_conforme'])
 
   if (errorConteos) {
     console.error(

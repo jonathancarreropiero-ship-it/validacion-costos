@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { obtenerCostosAuditor } from '../../services/costos'
 import CostListFilters from '../../components/CostListFilters'
+import ScrollableTable from '../../components/ScrollableTable'
 import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 function AuditorCostos({
@@ -20,6 +21,7 @@ function AuditorCostos({
   const [fechaFiltro, setFechaFiltro] = useState('')
   const [modoFechaFiltro, setModoFechaFiltro] = useState('subido')
   const [estadoFiltro, setEstadoFiltro] = useState('todos')
+  const [resultadoFiltro, setResultadoFiltro] = useState('todos')
   const [alerta, setAlerta] = useState(null)
 
   // ==========================================================
@@ -86,15 +88,17 @@ function AuditorCostos({
     busqueda,
     fecha: fechaFiltro,
     modoFecha: modoFechaFiltro,
-    estado: estadoFiltro
+    estado: estadoFiltro,
+    resultado: resultadoFiltro
   })
-  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos')
+  const filtrosListaActivos = Boolean(busqueda || fechaFiltro || estadoFiltro !== 'todos' || resultadoFiltro !== 'todos')
 
   function limpiarFiltrosLista() {
     setBusqueda('')
     setFechaFiltro('')
     setModoFechaFiltro('subido')
     setEstadoFiltro('todos')
+    setResultadoFiltro('todos')
   }
 
   // ==========================================================
@@ -382,6 +386,8 @@ function AuditorCostos({
           onModoFechaChange={setModoFechaFiltro}
           estado={estadoFiltro}
           onEstadoChange={setEstadoFiltro}
+          resultado={resultadoFiltro}
+          onResultadoChange={setResultadoFiltro}
           onLimpiar={limpiarFiltrosLista}
         />
 
@@ -477,14 +483,16 @@ function AuditorCostos({
             </div>
           </div>
 
-          <div className="auditor-costos-table-wrapper">
-            <table className="auditor-costos-table">
+          <ScrollableTable
+            className="auditor-costos-table-wrapper"
+            tableClassName="auditor-costos-table"
+            ariaLabel="costos del auditor"
+          >
               <thead>
                 <tr>
                   <th className="col-costo">Costo</th>
                   <th className="col-date">Subido</th>
                   <th className="col-date">Realizado</th>
-                  <th className="col-lineas">Líneas</th>
                   <th className="col-estado">Estado</th>
                   <th className="col-resultado">Resultado</th>
                   <th className="col-conteo">Conteo</th>
@@ -562,14 +570,6 @@ function AuditorCostos({
 
                       <td><span className="cost-date-value">{formatoFechaCosto(costo.created_at)}</span></td>
                       <td><span className="cost-date-value">{formatoFechaCosto(costo.fecha_realizado)}</span></td>
-
-                      {/* LÍNEAS */}
-
-                      <td>
-                        <span className="auditor-table-value">
-                          {costo.lineas_count}
-                        </span>
-                      </td>
 
                       {/* ESTADO */}
 
@@ -681,8 +681,7 @@ function AuditorCostos({
                   )
                 })}
               </tbody>
-            </table>
-          </div>
+          </ScrollableTable>
         </div>
       )}
 

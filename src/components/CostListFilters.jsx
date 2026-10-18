@@ -7,9 +7,11 @@ export default function CostListFilters({
   onModoFechaChange,
   estado,
   onEstadoChange,
+  resultado,
+  onResultadoChange,
   onLimpiar
 }) {
-  const hayFiltros = Boolean(busqueda || fecha || estado !== 'todos')
+  const hayFiltros = Boolean(busqueda || fecha || estado !== 'todos' || resultado !== 'todos')
 
   return (
     <div className="cost-list-filters">
@@ -61,6 +63,17 @@ export default function CostListFilters({
           <option value="pendiente">Pendiente</option>
           <option value="en_proceso">En proceso</option>
           <option value="terminado">Terminado</option>
+        </select>
+      </label>
+
+      <label className="cost-result-filter">
+        <span>Resultado</span>
+        <select value={resultado} onChange={event => onResultadoChange(event.target.value)}>
+          <option value="todos">Todos los resultados</option>
+          <option value="conforme">Conforme</option>
+          <option value="no_conforme">No conforme</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="sin_conteo">Sin conteo</option>
         </select>
       </label>
 
