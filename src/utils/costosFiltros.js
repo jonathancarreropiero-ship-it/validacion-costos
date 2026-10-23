@@ -8,9 +8,10 @@ export function normalizarResultadoCosto(resultado) {
 }
 
 export function obtenerCategoriaResultadoCosto(costo) {
+  if (costo?.validado_por_apoyo) return 'validado_por_apoyo'
   const resultado = normalizarResultadoCosto(costo?.resultado)
   if (resultado === 'conforme' || resultado === 'no_conforme') return resultado
-  return costo?.numero_ultimo_conteo ? 'pendiente' : 'sin_conteo'
+  return 'pendiente'
 }
 
 export function obtenerFechaLocal(valor) {
@@ -43,7 +44,10 @@ export function filtrarListaCostos(costos, { busqueda, fecha, modoFecha, estado,
   return (costos || []).filter(costo => {
     if (texto && !String(costo.numero_costo ?? '').toLowerCase().includes(texto)) return false
 
-    if (estado && estado !== 'todos' && String(costo.estado || '').toLowerCase() !== estado) return false
+    const estadoEfectivo = normalizarResultadoCosto(costo?.resultado) === 'conforme'
+      ? 'terminado'
+      : String(costo.estado || '').toLowerCase()
+    if (estado && estado !== 'todos' && estadoEfectivo !== estado) return false
     if (resultado && resultado !== 'todos' && obtenerCategoriaResultadoCosto(costo) !== resultado) return false
 
     if (modoFecha === 'realizado') {

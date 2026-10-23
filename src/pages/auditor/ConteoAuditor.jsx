@@ -6,7 +6,7 @@ import {
   obtenerAuditoriaOffline
 } from '../../services/offlineStorage'
 import ValidationNotice from '../../components/ValidationNotice'
-import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
+import CountQuantityEditor from '../../components/CountQuantityEditor'
 
 async function cargarBorradorLocalAuditor({ usuarioId, costoId, detalleId, numeroConteo, clave }) {
   if (!usuarioId || !costoId || !detalleId) return null
@@ -533,121 +533,22 @@ const esNumeroPermitido = valor => {
 
       )}
 
-      {/* CANTIDADES */}
-
-      <div className="conteo-inline-group">
-
-        <div className="conteo-inline-label">
-
-          Cantidades
-
-        </div>
-
-        <div className="conteo-inline-cantidades">
-
-          {cantidades.map(
-
-            (cantidad, index) => (
-
-              <div
-
-                className="conteo-cantidad-item"
-
-                key={`cantidad-${index}`}
-
-              >
-
-                <input
-
-                  type="text"
-
-                  inputMode="decimal"
-
-                  value={cantidad}
-
-                  onChange={e =>
-
-                    cambiarCantidad(
-
-                      index,
-
-                      e.target.value
-
-                    )
-
-                  }
-
-                  placeholder="Cantidad"
-
-                  className="conteo-input"
-
-                  disabled={validando}
-
-                  aria-label={`Cantidad ${index + 1}`}
-
-                />
-
-                {cantidades.length > 1 && (
-
-                  <button
-
-                    type="button"
-
-                    className="btn-eliminar-cantidad"
-
-                    onClick={() =>
-
-                      eliminarCantidad(index)
-
-                    }
-
-                    title="Eliminar cantidad"
-
-                    aria-label={`Eliminar cantidad ${index + 1}`}
-
-                    disabled={validando}
-
-                  >
-
-                    ×
-
-                  </button>
-
-                )}
-
-              </div>
-
-            )
-
-          )}
-
-          <button
-
-            type="button"
-
-            className="btn-agregar-cantidad"
-
-            onClick={agregarCantidad}
-
+      <div className="conteo-inline-editors">
+        <div className="conteo-inline-group">
+          <div className="conteo-inline-label">Cantidad física</div>
+          <CountQuantityEditor
+            cantidades={cantidades}
+            onCambiar={cambiarCantidad}
+            onAgregar={agregarCantidad}
+            onEliminar={eliminarCantidad}
             disabled={validando}
-
-            title="Agregar otra cantidad"
-
-            aria-label="Agregar otra cantidad"
-
-          >
-
-            <span>+</span>
-
-          </button>
-
+            etiqueta="Cantidad"
+          />
         </div>
-
-      </div>
 
       {/* FACTOR */}
 
-      <div className="conteo-inline-factor">
+      <div className={`conteo-inline-factor ${Number(factor) !== (Number(detalle.factor) > 0 ? Number(detalle.factor) : 1) ? 'factor-modified' : ''}`}>
 
         <label htmlFor={`factor-${detalle.id}`}>
 
@@ -681,29 +582,16 @@ const esNumeroPermitido = valor => {
 
         />
 
+        <span className="conteo-factor-origin">
+          {Number(factor) !== (Number(detalle.factor) > 0 ? Number(detalle.factor) : 1)
+            ? `Modificado · Plantilla: × ${Number(detalle.factor) > 0 ? detalle.factor : 1}`
+            : ''}
+        </span>
+
+      </div>
       </div>
 
       {/* ERROR */}
-
-      {error && !esAvisoCantidadesIncompletas(error) && (
-
-        <div className="conteo-inline-error">
-
-          <span className="conteo-inline-error-icon">
-
-            !
-
-          </span>
-
-          <span>
-
-            {error}
-
-          </span>
-
-        </div>
-
-      )}
 
     </div>
 

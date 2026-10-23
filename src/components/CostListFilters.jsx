@@ -1,3 +1,11 @@
+const RESULTADOS = [
+  { valor: 'todos', etiqueta: 'Todos' },
+  { valor: 'conforme', etiqueta: 'Conforme', clase: 'conforme' },
+  { valor: 'no_conforme', etiqueta: 'No conforme', clase: 'no-conforme' },
+  { valor: 'validado_por_apoyo', etiqueta: 'Validado por apoyo', clase: 'validado-apoyo' },
+  { valor: 'pendiente', etiqueta: 'Pendiente', clase: 'pendiente' }
+]
+
 export default function CostListFilters({
   busqueda,
   onBusquedaChange,
@@ -5,13 +13,39 @@ export default function CostListFilters({
   onFechaChange,
   modoFecha,
   onModoFechaChange,
-  estado,
-  onEstadoChange,
-  resultado,
+  estado = 'todos',
+  resultado = 'todos',
   onResultadoChange,
-  onLimpiar
+  onLimpiar,
+  soloResultados = false,
+  ocultarResultados = false
 }) {
   const hayFiltros = Boolean(busqueda || fecha || estado !== 'todos' || resultado !== 'todos')
+
+  const controlResultado = (
+    <div className={`cost-result-filter${soloResultados ? ' cost-result-filter-standalone' : ''}`}>
+      <span>Resultado</span>
+      <div className="cost-result-options" role="group" aria-label="Filtrar por resultado">
+        {RESULTADOS.map(opcion => (
+          <button
+            key={opcion.valor}
+            type="button"
+            className={[
+              'btn btn-sm cost-result-option',
+              opcion.clase || 'todos',
+              resultado === opcion.valor ? 'active' : ''
+            ].filter(Boolean).join(' ')}
+            aria-pressed={resultado === opcion.valor}
+            onClick={() => onResultadoChange(opcion.valor)}
+          >
+            {opcion.etiqueta}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
+  if (soloResultados) return controlResultado
 
   return (
     <div className="cost-list-filters">
@@ -56,29 +90,10 @@ export default function CostListFilters({
         </div>
       </div>
 
-      <label className="cost-state-filter">
-        <span>Estado</span>
-        <select value={estado} onChange={event => onEstadoChange(event.target.value)}>
-          <option value="todos">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="en_proceso">En proceso</option>
-          <option value="terminado">Terminado</option>
-        </select>
-      </label>
-
-      <label className="cost-result-filter">
-        <span>Resultado</span>
-        <select value={resultado} onChange={event => onResultadoChange(event.target.value)}>
-          <option value="todos">Todos los resultados</option>
-          <option value="conforme">Conforme</option>
-          <option value="no_conforme">No conforme</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="sin_conteo">Sin conteo</option>
-        </select>
-      </label>
+      {!ocultarResultados && controlResultado}
 
       {hayFiltros && (
-        <button type="button" className="cost-filters-clear" onClick={onLimpiar}>
+          <button type="button" className="btn btn-sm cost-filters-clear" onClick={onLimpiar}>
           Limpiar
         </button>
       )}

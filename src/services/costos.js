@@ -193,95 +193,32 @@ export async function obtenerCostosAuditor() {
     return []
   }
 
-  const costoIds = listaCostos.map(costo => costo.id)
   // Los builders de Supabase son thenables, pero no exponen `.catch()`.
   // Envolver la llamada en una promesa nativa conserva el fallback de bloqueos
   // si la RPC falla y evita abortar la carga completa del auditor.
   const bloqueosPromise = Promise.resolve()
     .then(() => supabase.rpc('obtener_bloqueos_costos_auditor'))
     .catch(error => ({ data: null, error }))
+  const apoyosPromise = Promise.resolve()
+    .then(() => supabase.rpc('estados_apoyo_costos'))
+    .catch(error => ({ data: null, error }))
+  const reconteosNoManifestadosPromise = Promise.resolve()
+    .then(() => supabase.rpc('reconteos_no_manifestados_disponibles_auditor'))
+    .catch(error => ({ data: null, error }))
+  const validacionesApoyoPromise = Promise.resolve()
+    .then(() => supabase.rpc('estados_validacion_apoyo_costos'))
+    .catch(error => ({ data: null, error }))
 
-  // 2. Obtener IDs de detalles visibles para el auditor.
-  // Para el resumen de estado basta con leer los IDs de líneas y su costo.
-  // Intentar primero la tabla base permite reconstruir el resultado aunque
-  // la vista de auditor no exponga filas a un segundo auditor; si la política
-  // de lectura no lo permite, conservar el comportamiento actual como respaldo.
-  let { data: detalles, error: errorDetalles } = await supabase
-    .from('detalle_costos')
-    .select('id, costo_id')
-    .in('costo_id', costoIds)
-
-  if (errorDetalles || !detalles?.length) {
-    const respuestaVista = await supabase
-      .from('auditor_detalle_costos')
-      .select('id, costo_id')
-      .in('costo_id', costoIds)
-
-    detalles = respuestaVista.data
-    errorDetalles = respuestaVista.error
-  }
-
-  if (errorDetalles) {
-    console.error(
-      'Error obteniendo detalles de costos:',
-      errorDetalles
-    )
-    throw errorDetalles
-  }
-
-  // 3. Obtener conteos y resultados de las líneas.
-  const detalleIds = (detalles || []).map(detalle => detalle.id)
-  let conteos = []
-
-  if (detalleIds.length > 0) {
-    try {
-      const {
-        data,
-        error: errorConteos
-      } = await supabase
-        .from('conteos')
-        .select(`
-          detalle_costo_id,
-          numero_conteo,
-          resultado,
-          created_at
-        `)
-        .in('detalle_costo_id', detalleIds)
-
-      if (errorConteos) {
-        // RLS puede impedir que un auditor lea conteos de otros usuarios.
-        // Los resultados compartidos en costos siguen visibles sin exponer
-        // las filas de conteo ni bloquear la lista completa.
-        console.warn(
-          'No se pudieron leer los conteos detallados del auditor; se usarán los resultados compartidos:',
-          errorConteos
-        )
-      } else {
-        conteos = data || []
-      }
-    } catch (errorConteos) {
-      console.warn(
-        'Falló la lectura de conteos del auditor; se usarán los resultados compartidos:',
-        errorConteos
-      )
-    }
-  }
-
-  // 4. Relacionar cada detalle con su costo.
-  const detallePorId = new Map(
-    (detalles || []).map(detalle => [
-      String(detalle.id),
-      detalle.costo_id
-    ])
-  )
+  // El RPC entrega únicamente el resumen necesario para la lista, sin abrir
+  // el acceso auditor a todos los registros de detalle por medio de la vista.
+  const { data: conteos, error: errorConteos } = await supabase.rpc('resumen_conteos_auditor')
+  if (errorConteos) throw errorConteos
 
   // 5. Agrupar los números de conteo registrados.
   const conteosPorCosto = new Map()
 
   for (const conteo of conteos) {
-    const costoId = detallePorId.get(
-      String(conteo.detalle_costo_id)
-    )
+    const costoId = conteo.costo_id
 
     if (costoId == null) continue
 
@@ -302,9 +239,7 @@ export async function obtenerCostosAuditor() {
   const resultadoPorCosto = new Map()
 
   for (const conteo of conteos) {
-    const costoId = detallePorId.get(
-      String(conteo.detalle_costo_id)
-    )
+    const costoId = conteo.costo_id
 
     if (costoId == null) continue
 
@@ -362,6 +297,10 @@ export async function obtenerCostosAuditor() {
     error: errorBloqueos
   } = await bloqueosPromise
 
+  const { data: apoyos } = await apoyosPromise
+  const { data: reconteosNoManifestados } = await reconteosNoManifestadosPromise
+  const { data: validacionesApoyo } = await validacionesApoyoPromise
+
   if (errorBloqueos) {
     console.error(
       'Error obteniendo bloqueos de costos:',
@@ -376,10 +315,20 @@ export async function obtenerCostosAuditor() {
       bloqueo
     ])
   )
+  const mapaApoyos = new Map((apoyos || []).map(apoyo => [
+    Number(apoyo.costo_id), apoyo
+  ]))
+  const mapaReconteosNoManifestados = new Map((reconteosNoManifestados || []).map(item => [
+    Number(item.costo_id), Number(item.numero_conteo)
+  ]))
+  const mapaValidacionesApoyo = new Map((validacionesApoyo || []).map(item => [Number(item.costo_id), item]))
 
   // 8. Devolver costos, conteos, resultados y bloqueos.
   const costosConResultado = listaCostos.map(costo => {
     const bloqueo = mapaBloqueos.get(Number(costo.id))
+    const apoyo = mapaApoyos.get(Number(costo.id))
+    const numeroReconteoNoManifestado = mapaReconteosNoManifestados.get(Number(costo.id))
+    const validacionApoyo = mapaValidacionesApoyo.get(Number(costo.id))
     const clave = String(costo.id)
 
     const registrados = conteosPorCosto.get(clave)
@@ -396,6 +345,16 @@ export async function obtenerCostosAuditor() {
 
     return {
       ...costo,
+
+      apoyo_habilitado: Boolean(apoyo?.apoyo_habilitado && Number(apoyo.numero_conteo) === Number(costo.conteo_habilitado)),
+      usuarios_apoyo_unidos: Number(apoyo?.usuarios_unidos || 0),
+      soy_participante_apoyo: Boolean(apoyo?.soy_participante),
+      reconteo_no_manifestado_habilitado: numeroReconteoNoManifestado || null,
+      validado_por_apoyo: validacionApoyo?.estado === 'completada',
+      validacion_apoyo_pendiente: validacionApoyo?.estado === 'solicitada',
+      soy_solicitante_apoyo_final: Boolean(validacionApoyo?.soy_solicitante),
+      soy_validador_apoyo_final: Boolean(validacionApoyo?.soy_validador),
+      resultado_validacion_apoyo: validacionApoyo?.resultado || null,
 
       conteos_registrados: registrados
         ? [...registrados]
@@ -459,21 +418,10 @@ export async function obtenerDetallesAuditor(
     throw new Error('Número de conteo no válido.')
   }
 
-  const {
-    data,
-    error
-  } = await supabase
-    .from('auditor_detalle_costos')
-    .select(`
-      id,
-      costo_id,
-      sku,
-      descripcion,
-      um,
-      ubicacion
-    `)
-    .eq('costo_id', costoId)
-    .order('id', { ascending: true })
+  const { data, error } = await supabase.rpc('obtener_lineas_conteo', {
+    p_costo_id: Number(costoId),
+    p_numero_conteo: numero
+  })
 
   if (error) {
     console.error(
@@ -483,50 +431,7 @@ export async function obtenerDetallesAuditor(
     throw error
   }
 
-  const detalles = data || []
-
-  if (numero === 1) {
-    return detalles
-  }
-
-  const conteoAnterior = numero - 1
-  const detalleIds = detalles.map(detalle => detalle.id)
-
-  if (detalleIds.length === 0) {
-    return []
-  }
-
-  const {
-    data: conteosAnteriores,
-    error: errorConteos
-  } = await supabase
-    .from('conteos')
-    .select(`
-      detalle_costo_id,
-      numero_conteo,
-      resultado
-    `)
-    .in('detalle_costo_id', detalleIds)
-    .eq('numero_conteo', conteoAnterior)
-    .in('resultado', ['diferencia', 'no_conforme'])
-
-  if (errorConteos) {
-    console.error(
-      'Error obteniendo diferencias anteriores:',
-      errorConteos
-    )
-    throw errorConteos
-  }
-
-  const idsDiferencia = new Set(
-    (conteosAnteriores || []).map(
-      conteo => conteo.detalle_costo_id
-    )
-  )
-
-  return detalles.filter(
-    detalle => idsDiferencia.has(detalle.id)
-  )
+  return data || []
 }
 
 // ============================================================
@@ -547,91 +452,12 @@ export async function obtenerResultadosCostoAuditor(
     throw new Error('Número de conteo no válido.')
   }
 
-  const {
-    data: detalles,
-    error: errorDetalles
-  } = await supabase
-    .from('auditor_detalle_costos')
-    .select(`
-      id,
-      costo_id,
-      sku,
-      descripcion,
-      um,
-      ubicacion
-    `)
-    .eq('costo_id', costoId)
-    .order('id', { ascending: true })
-
-  if (errorDetalles) {
-    console.error(
-      'Error obteniendo detalles para resultados:',
-      errorDetalles
-    )
-    throw errorDetalles
-  }
-
-  const listaDetalles = detalles || []
-
-  if (listaDetalles.length === 0) {
-    return []
-  }
-
-  const detalleIds = listaDetalles.map(detalle => detalle.id)
-
-  const {
-    data: conteos,
-    error: errorConteos
-  } = await supabase
-    .from('conteos')
-    .select(`
-      id,
-      detalle_costo_id,
-      numero_conteo,
-      factor,
-      cantidad_total,
-      cantidad_final,
-      resultado,
-      created_at
-    `)
-    .in('detalle_costo_id', detalleIds)
-    .eq('numero_conteo', numero)
-    .order('id', { ascending: true })
-
-  if (errorConteos) {
-    console.error(
-      'Error obteniendo resultados del costo:',
-      errorConteos
-    )
-    throw errorConteos
-  }
-
-  const mapaConteos = new Map(
-    (conteos || []).map(conteo => [
-      conteo.detalle_costo_id,
-      conteo
-    ])
-  )
-
-  return listaDetalles.map(detalle => {
-    const conteo = mapaConteos.get(detalle.id)
-
-    return {
-      ...detalle,
-
-      conteo: conteo
-        ? {
-            id: conteo.id,
-            numeroConteo: Number(conteo.numero_conteo),
-            factor: Number(conteo.factor),
-            cantidadTotal: Number(conteo.cantidad_total),
-            cantidadFinal: Number(conteo.cantidad_final),
-            resultado: conteo.resultado,
-            createdAt: conteo.created_at
-          }
-        : null
-    }
+  const { data, error } = await supabase.rpc('obtener_resultados_conteo_auditor', {
+    p_costo_id: Number(costoId),
+    p_numero_conteo: numero
   })
+  if (error) throw error
+  return data || []
 }
 
 // ============================================================
@@ -648,69 +474,19 @@ export async function obtenerConteoAnterior(
     return null
   }
 
-  const anterior = numero - 1
-
-  const {
-    data: conteo,
-    error: errorConteo
-  } = await supabase
-    .from('conteos')
-    .select(`
-      id,
-      numero_conteo,
-      factor,
-      cantidad_total,
-      cantidad_final
-    `)
-    .eq('detalle_costo_id', detalleCostoId)
-    .eq('numero_conteo', anterior)
-    .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (errorConteo) {
-    console.error(
-      'Error obteniendo conteo anterior:',
-      errorConteo
-    )
-    throw errorConteo
-  }
-
-  if (!conteo) {
-    return null
-  }
-
-  const {
-    data: items,
-    error: errorItems
-  } = await supabase
-    .from('conteo_items')
-    .select(`
-      item_numero,
-      cantidad
-    `)
-    .eq('conteo_id', conteo.id)
-    .order('item_numero', { ascending: true })
-
-  if (errorItems) {
-    console.error(
-      'Error obteniendo cantidades anteriores:',
-      errorItems
-    )
-    throw errorItems
-  }
-
-  return {
-    id: conteo.id,
-    numeroConteo: Number(conteo.numero_conteo),
-    factor: Number(conteo.factor),
-    cantidadTotal: Number(conteo.cantidad_total),
-    cantidadFinal: Number(conteo.cantidad_final),
-
-    cantidades: (items || []).map(
-      item => Number(item.cantidad)
-    )
-  }
+  const { data, error } = await supabase.rpc('obtener_conteo_anterior_seguro', {
+    p_detalle_costo_id: Number(detalleCostoId),
+    p_numero_conteo: numero
+  })
+  if (error) throw error
+  return data ? {
+    id: data.id,
+    numeroConteo: Number(data.numeroConteo),
+    factor: Number(data.factor),
+    cantidadTotal: Number(data.cantidadTotal),
+    cantidadFinal: Number(data.cantidadFinal),
+    cantidades: (data.cantidades || []).map(Number)
+  } : null
 }
 
 // ============================================================
@@ -791,9 +567,7 @@ export async function guardarConteoCosto(
     throw new Error('Número de conteo no válido.')
   }
 
-  if (!Array.isArray(detalles) || detalles.length === 0) {
-    throw new Error('No hay líneas para guardar.')
-  }
+  if (!Array.isArray(detalles)) throw new Error('El conteo no contiene una lista válida de líneas.')
 
   const detallesParaGuardar = detalles.map(detalle => {
     const detalleCostoId = Number(
@@ -846,7 +620,7 @@ export async function guardarConteoCosto(
   const {
     data,
     error
-  } = await supabase.rpc('guardar_conteo_costo', {
+  } = await supabase.rpc('guardar_conteo_compartido', {
     p_costo_id: Number(costoId),
     p_numero_conteo: numero,
     p_detalles: detallesParaGuardar
@@ -857,6 +631,14 @@ export async function guardarConteoCosto(
     throw error
   }
 
+  if (data?.esperando_segundo) {
+    return {
+      ...data,
+      esperando_segundo: true,
+      apoyo_habilitado: true
+    }
+  }
+
   const resultadoServidor = String(data?.resultado || '')
     .trim()
     .toLowerCase()
@@ -864,23 +646,6 @@ export async function guardarConteoCosto(
   const resultadoFinal = resultadoServidor === 'diferencia'
     ? 'no_conforme'
     : resultadoServidor
-
-  // Publicar el resultado en la fila compartida del costo.
-  if (resultadoFinal === 'conforme' || resultadoFinal === 'no_conforme') {
-    const resultadoPersistido = resultadoFinal === 'no_conforme'
-      ? 'diferencia'
-      : resultadoFinal
-    const { data: costoActualizado, error: errorResultado } = await supabase
-      .from('costos')
-      .update({ resultado: resultadoPersistido })
-      .eq('id', Number(costoId))
-      .select('id')
-      .maybeSingle()
-
-    if (errorResultado || !costoActualizado) {
-      console.error('El conteo se guardó, pero no se pudo publicar el resultado compartido:', errorResultado)
-    }
-  }
 
   return {
     costoId: Number(data?.costoId ?? costoId),
@@ -978,22 +743,57 @@ export async function habilitarConteo(
     throw new Error('No se recibió el costo.')
   }
 
-  const {
-    error
-  } = await supabase
-    .from('costos')
-    .update({
-      conteo_habilitado: numero,
-      estado: 'en_proceso'
-    })
-    .eq('id', costoId)
+  const { data, error } = await supabase.rpc('habilitar_conteo_seguro', {
+    p_costo_id: Number(costoId),
+    p_numero_conteo: numero
+  })
 
   if (error) {
     console.error('Error habilitando conteo:', error)
     throw error
   }
 
-  return true
+  if (!data?.success) throw new Error('No se pudo habilitar el conteo.')
+  return data
+}
+
+export async function habilitarApoyoConteo(costoId, numeroConteo) {
+  const { data, error } = await supabase.rpc('habilitar_apoyo_conteo', {
+    p_costo_id: Number(costoId),
+    p_numero_conteo: Number(numeroConteo)
+  })
+  if (error) throw error
+  return data
+}
+
+export async function obtenerEstadoConteoCompartido(costoId, numeroConteo) {
+  const { data, error } = await supabase.rpc('estado_conteo_compartido', {
+    p_costo_id: Number(costoId),
+    p_numero_conteo: Number(numeroConteo)
+  })
+  if (error) throw error
+  return data
+}
+
+// Lee el resultado desde los conteos persistidos para que ambos participantes
+// calculen el mismo resumen, independientemente de quién guardó al final.
+export async function obtenerResumenConteoCompartido(costoId, numeroConteo) {
+  const { data, error } = await supabase.rpc('resumen_conteos_auditor')
+  if (error) throw error
+
+  const filas = (data || []).filter(fila =>
+    String(fila.costo_id) === String(costoId) &&
+    Number(fila.numero_conteo) === Number(numeroConteo)
+  )
+  const lineasConformes = filas.filter(fila =>
+    String(fila.resultado || '').trim().toLowerCase() === 'conforme'
+  ).length
+
+  return {
+    totalLineas: filas.length,
+    lineasConformes,
+    lineasDiferencia: filas.length - lineasConformes
+  }
 }
 
 // ============================================================
@@ -1135,8 +935,8 @@ export async function obtenerDetallesCostoAdmin(
   const {
     data,
     error
-  } = await supabase.rpc('obtener_detalles_costo_admin', {
-    p_costo_id: costoId,
+  } = await supabase.rpc('obtener_lineas_conteo', {
+    p_costo_id: Number(costoId),
     p_numero_conteo: numero
   })
 

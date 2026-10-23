@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../supabaseClient";
+import ValidationNotice from "../../components/ValidationNotice";
+import ReconteoNoManifestados from "../../components/ReconteoNoManifestados";
 import "./DetalleCosto.css";
 
 function clasificarDetalleConConteos(detalle, conteos) {
@@ -23,11 +25,24 @@ function clasificarDetalleConConteos(detalle, conteos) {
   };
 }
 
+function lineaTieneFactorModificado(detalle, conteos) {
+  const factorPlantilla = Number(detalle?.factor) > 0 ? Number(detalle.factor) : 1;
+  return (conteos || []).some((conteo) => {
+    if (conteo.detalle_costo_id !== detalle.id) return false;
+    const factorAplicado = Number(conteo.factor) > 0 ? Number(conteo.factor) : factorPlantilla;
+    return factorAplicado !== factorPlantilla;
+  });
+}
+
 export default function DetalleCosto({ costo, onVolver }) {
   const [detalles, setDetalles] = useState([]);
   const [conteos, setConteos] = useState([]);
   const [itemsConteo, setItemsConteo] = useState([]);
   const [noManifestados, setNoManifestados] = useState([]);
+  const [reconteosNoManifestados, setReconteosNoManifestados] = useState([]);
+  const [reconteoSeleccionado, setReconteoSeleccionado] = useState(null);
+  const [avisoReconteo, setAvisoReconteo] = useState("");
+  const [validacionApoyo, setValidacionApoyo] = useState(null);
 
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -60,6 +75,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             descripcion,
             um,
             ubicacion,
+            factor,
             cantidad_fisica
           `)
           .eq("costo_id", costo.id)
@@ -117,11 +133,28 @@ export default function DetalleCosto({ costo, onVolver }) {
       if (respuestaItems.error) throw respuestaItems.error;
       if (respuestaNoManifestados.error) throw respuestaNoManifestados.error;
 
+      const { data: reconteosNoManifestadosData, error: errorReconteosNoManifestados } = await supabase.rpc(
+        "resumen_reconteos_no_manifestados_admin",
+        { p_costo_id: Number(costo.id) }
+      );
+      if (errorReconteosNoManifestados) {
+        console.info("El detalle de recuentos de no manifestados aún no está disponible:", errorReconteosNoManifestados.message);
+      }
+      const { data: validacionApoyoData, error: errorValidacionApoyo } = await supabase.rpc(
+        "resumen_validacion_apoyo_admin",
+        { p_costo_id: Number(costo.id) }
+      );
+      if (errorValidacionApoyo) console.info("La validación por apoyo aún no está disponible:", errorValidacionApoyo.message);
+
       const itemsData = respuestaItems.data || [];
       const noManifestadosData = respuestaNoManifestados.data || [];
       const auditorIds = [...new Set([
         ...conteosData.map(conteo => conteo.auditor_id),
-        ...noManifestadosData.map(item => item.auditor_id)
+        ...noManifestadosData.map(item => item.auditor_id),
+        ...(reconteosNoManifestadosData || []).map(item => item.auditor_id),
+        validacionApoyoData?.solicitante_id,
+        validacionApoyoData?.validador_id,
+        ...(validacionApoyoData?.lineas || []).map(linea => linea.auditor_id)
       ].filter(Boolean).map(String))];
 
       const respuestasAuditores = await Promise.all(auditorIds.map(async auditorId => {
@@ -144,6 +177,19 @@ export default function DetalleCosto({ costo, onVolver }) {
         ...item,
         auditor_email: item.auditor_id ? emailPorAuditor.get(String(item.auditor_id)) : "Sin auditor"
       }));
+      const reconteosConAuditor = (reconteosNoManifestadosData || []).map(item => ({
+        ...item,
+        auditor_email: item.auditor_id ? emailPorAuditor.get(String(item.auditor_id)) : "—"
+      }));
+      const validacionApoyoConUsuarios = validacionApoyoData ? {
+        ...validacionApoyoData,
+        solicitante_email: emailPorAuditor.get(String(validacionApoyoData.solicitante_id)) || "—",
+        validador_email: emailPorAuditor.get(String(validacionApoyoData.validador_id)) || "—",
+        lineas: (validacionApoyoData.lineas || []).map(linea => ({
+          ...linea,
+          auditor_email: emailPorAuditor.get(String(linea.auditor_id)) || "—"
+        }))
+      } : null;
 
       // =====================================================
       // 7. GUARDAR DATOS
@@ -151,6 +197,8 @@ export default function DetalleCosto({ costo, onVolver }) {
       setDetalles(detallesData || []);
       setConteos(conteosConAuditor);
       setItemsConteo(itemsData);
+      setReconteosNoManifestados(reconteosConAuditor);
+      setValidacionApoyo(validacionApoyoConUsuarios);
       setNoManifestados(
         noManifestadosConAuditor
       );
@@ -168,6 +216,20 @@ export default function DetalleCosto({ costo, onVolver }) {
       setCargando(false);
     }
   }, [costo]);
+
+  async function habilitarReconteoNoManifestado(item, numeroConteo) {
+    setAvisoReconteo("");
+    const { error: errorHabilitar } = await supabase.rpc("habilitar_reconteo_no_manifestado", {
+      p_costo_id: Number(costo.id),
+      p_sku: String(item.sku || ""),
+      p_numero_conteo: Number(numeroConteo)
+    });
+    if (errorHabilitar) {
+      setAvisoReconteo(errorHabilitar.message || "No se pudo habilitar el recuento del SKU.");
+      return;
+    }
+    await cargarDetalle();
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => cargarDetalle(), 0)
@@ -429,23 +491,53 @@ export default function DetalleCosto({ costo, onVolver }) {
       XLSX.utils.book_append_sheet(workbook, detalleSheet, "Detalle");
 
       if (noManifestados.length > 0) {
+        const ultimoReconteoPorItem = new Map();
+        for (const reconteo of reconteosNoManifestados) {
+          if (reconteo.cantidad_reconteo == null) continue;
+          const id = Number(reconteo.id);
+          const numeroConteo = Number(reconteo.numero_conteo);
+          const actual = ultimoReconteoPorItem.get(id);
+          if (!actual || numeroConteo > actual.numeroConteo) {
+            ultimoReconteoPorItem.set(id, { numeroConteo, registros: [reconteo] });
+          } else if (numeroConteo === actual.numeroConteo) {
+            actual.registros.push(reconteo);
+          }
+        }
+        const filasNoManifestados = noManifestados.flatMap(item => {
+          const ultimo = ultimoReconteoPorItem.get(Number(item.id));
+          const registros = ultimo?.registros || [null];
+          return registros.map(reconteo => [
+            item.sku || "",
+            reconteo ? `Conteo ${reconteo.numero_conteo}` : "Sin recuento",
+            item.cantidad ?? "",
+            reconteo?.cantidad_reconteo ?? "Pendiente",
+            reconteo?.auditor_email || "—",
+            item.observacion || ""
+          ]);
+        });
         const adicionales = XLSX.utils.aoa_to_sheet([
-          [`SKUS NO MANIFESTADOS · COSTO ${costo?.numero_costo || ""}`],
+          [`NO MANIFESTADOS · ÚLTIMO CONTEO · COSTO ${costo?.numero_costo || ""}`],
           [],
-          ["SKU", "Cantidad física", "Observación"]
+          ["SKU", "Conteo más reciente", "Cantidad inicial", "Cantidad último conteo", "Auditor", "Observación"]
         ]);
-        XLSX.utils.sheet_add_aoa(adicionales, noManifestados.map(item => [
-          item.sku || "",
-          Number(item.cantidad) || 0,
-          item.observacion || ""
-        ]), { origin: "A4" });
-        adicionales["!autofilter"] = { ref: `A3:C${noManifestados.length + 3}` };
-        adicionales["!cols"] = [{ wch: 20 }, { wch: 18 }, { wch: 45 }];
-        adicionales["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
-        styleRange(adicionales, "A1:C1", titleStyle);
-        styleRange(adicionales, "A3:C3", headerStyle);
-        if (noManifestados.length) {
-          styleRange(adicionales, `A4:C${noManifestados.length + 3}`, (row, column) => bodyStyle(row, column));
+        XLSX.utils.sheet_add_aoa(adicionales, filasNoManifestados, { origin: "A4" });
+        adicionales["!autofilter"] = { ref: `A3:F${filasNoManifestados.length + 3}` };
+        adicionales["!cols"] = [{ wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 32 }, { wch: 45 }];
+        adicionales["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+        styleRange(adicionales, "A1:F1", titleStyle);
+        styleRange(adicionales, "A3:F3", headerStyle);
+        if (filasNoManifestados.length) {
+          styleRange(adicionales, `A4:F${filasNoManifestados.length + 3}`, (row, column, cell) => {
+            const style = bodyStyle(row, column);
+            if (column === 1 && cell.v === "Sin recuento") {
+              style.font = { name: "Aptos", color: { rgb: "FF8A5A00" }, italic: true, sz: 10 };
+            }
+            if (column === 2 || column === 3) {
+              style.alignment.horizontal = "right";
+              style.numFmt = "#,##0.##;[Red]-#,##0.##;–";
+            }
+            return style;
+          });
         }
         adicionales["!rows"] = [{ hpt: 30 }, { hpt: 8 }, { hpt: 28 }];
         adicionales["!views"] = [{ showGridLines: false, state: "frozen", ySplit: 3 }];
@@ -642,31 +734,12 @@ export default function DetalleCosto({ costo, onVolver }) {
           Volver a costos
         </button>
 
-        <div className="detalle-error">
-          <div className="detalle-error-icon">
-            !
-          </div>
-
-          <div>
-            <span className="section-kicker">
-              ERROR DE CARGA
-            </span>
-
-            <strong>
-              No se pudo cargar el detalle
-            </strong>
-
-            <p>{error}</p>
-
-            <button
-              onClick={cargarDetalle}
-              className="btn-reintentar"
-              type="button"
-            >
-              Reintentar
-            </button>
-          </div>
-        </div>
+        <ValidationNotice
+          message={error}
+          title="No se pudo cargar el detalle"
+          onClose={onVolver}
+          action={{ label: 'Reintentar', onClick: cargarDetalle }}
+        />
       </div>
     );
   }
@@ -784,7 +857,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             <span className="ui-notice-icon ui-notice-error" aria-hidden="true">!</span>
             <h2 id="export-error-title">No se pudo exportar</h2>
             <p>{errorExportacion}</p>
-            <button type="button" className="ui-notice-button" onClick={() => setErrorExportacion("")}>Entendido</button>
+            <button type="button" className="ui-notice-button" onClick={() => { setErrorExportacion(""); window.location.reload() }}>Entendido</button>
           </section>
         </div>
       )}
@@ -986,12 +1059,25 @@ export default function DetalleCosto({ costo, onVolver }) {
                 const realizado =
                   conteosDelNumero.length > 0;
 
+                const existeDiferenciaAnterior =
+                  numeroConteo === 1 || conteos.some(conteo =>
+                    conteo.numero_conteo === numeroConteo - 1 &&
+                    conteo.resultado === 'diferencia'
+                  );
+
+                const habilitado =
+                  !realizado &&
+                  Number(costo?.conteo_habilitado) === numeroConteo &&
+                  existeDiferenciaAnterior;
+
+                if (!realizado && !habilitado) return null;
+
                 return (
                   <div
                     className={`auditor-card ${
                       realizado
                         ? "realizado"
-                        : "pendiente"
+                        : "habilitado"
                     }`}
                     key={numeroConteo}
                   >
@@ -1024,9 +1110,9 @@ export default function DetalleCosto({ costo, onVolver }) {
                           REALIZADO
                         </span>
                       ) : (
-                        <span className="auditor-pendiente">
+                        <span className="auditor-habilitado">
                           <span className="auditor-status-dot" />
-                          PENDIENTE
+                          HABILITADO
                         </span>
                       )}
 
@@ -1045,11 +1131,13 @@ export default function DetalleCosto({ costo, onVolver }) {
                         <div>
 
                           <strong>
-                            Sin auditor
+                            {habilitado ? 'Disponible' : 'Sin auditor'}
                           </strong>
 
                           <span>
-                            Esta etapa todavía no registra actividad.
+                            {habilitado
+                              ? 'Conteo habilitado para las líneas con diferencias.'
+                              : 'Esta etapa todavía no registra actividad.'}
                           </span>
 
                         </div>
@@ -1141,11 +1229,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             {/* TODOS */}
             <button
               type="button"
-              className={
-                filtro === "todos"
-                  ? "filtro-btn activo"
-                  : "filtro-btn"
-              }
+              className={`filtro-btn filtro-todos${filtro === "todos" ? " activo" : ""}`}
               onClick={() =>
                 setFiltro("todos")
               }
@@ -1167,11 +1251,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             {/* CONFORMES */}
             <button
               type="button"
-              className={
-                filtro === "conformes"
-                  ? "filtro-btn activo filtro-conforme"
-                  : "filtro-btn"
-              }
+              className={`filtro-btn filtro-conforme${filtro === "conformes" ? " activo" : ""}`}
               onClick={() =>
                 setFiltro("conformes")
               }
@@ -1193,11 +1273,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             {/* SOBRANTES */}
             <button
               type="button"
-              className={
-                filtro === "sobrantes"
-                  ? "filtro-btn activo filtro-sobrante"
-                  : "filtro-btn"
-              }
+              className={`filtro-btn filtro-sobrante${filtro === "sobrantes" ? " activo" : ""}`}
               onClick={() =>
                 setFiltro("sobrantes")
               }
@@ -1219,11 +1295,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             {/* FALTANTES */}
             <button
               type="button"
-              className={
-                filtro === "faltantes"
-                  ? "filtro-btn activo filtro-faltante"
-                  : "filtro-btn"
-              }
+              className={`filtro-btn filtro-faltante${filtro === "faltantes" ? " activo" : ""}`}
               onClick={() =>
                 setFiltro("faltantes")
               }
@@ -1299,6 +1371,7 @@ export default function DetalleCosto({ costo, onVolver }) {
                 <th>Conteo 1</th>
                 <th>Conteo 2</th>
                 <th>Conteo 3</th>
+                <th>Validación por apoyo</th>
                 <th>Resultado final</th>
               </tr>
             </thead>
@@ -1309,7 +1382,7 @@ export default function DetalleCosto({ costo, onVolver }) {
 
                 <tr>
                   <td
-                    colSpan="9"
+                    colSpan="10"
                     className="tabla-vacia"
                   >
 
@@ -1357,9 +1430,23 @@ export default function DetalleCosto({ costo, onVolver }) {
                         detalle.id
                       );
 
+                    const esConteoDiferencia = conteo =>
+                      String(conteo?.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_') === 'diferencia';
+                    const habilitado = Number(costo?.conteo_habilitado);
+                    const mostrarConteo1 = Boolean(conteo1) || habilitado === 1;
+                    const mostrarConteo2 = Boolean(conteo2) ||
+                      (esConteoDiferencia(conteo1) && habilitado === 2);
+                    const mostrarConteo3 = Boolean(conteo3) ||
+                      (esConteoDiferencia(conteo2) && habilitado === 3);
+
+                    const factorModificado = lineaTieneFactorModificado(detalle, conteos);
+                    const lineaApoyo = validacionApoyo?.lineas?.find(linea => Number(linea.detalle_costo_id) === Number(detalle.id));
+
                     return (
                       <tr
                         key={detalle.id}
+                        className={factorModificado ? "fila-factor-modificado" : ""}
+                        title={factorModificado ? "El factor aplicado cambió respecto al factor de la plantilla de Excel" : undefined}
                       >
 
                         <td className="sku-cell">
@@ -1392,54 +1479,57 @@ export default function DetalleCosto({ costo, onVolver }) {
                         </td>
 
                         <td>
-                          <CeldaConteo
-                            conteo={conteo1}
-                            numeroConteo={1}
-                            detalle={detalle}
-                            abrirModal={
-                              abrirModal
-                            }
-                            obtenerItemsConteo={
-                              obtenerItemsConteo
-                            }
-                            textoResultado={
-                              textoResultado
-                            }
-                          />
+                          {mostrarConteo1 ? (
+                            <CeldaConteo
+                              conteo={conteo1}
+                              numeroConteo={1}
+                              habilitado={!conteo1 && habilitado === 1}
+                              detalle={detalle}
+                              abrirModal={abrirModal}
+                              obtenerItemsConteo={obtenerItemsConteo}
+                              textoResultado={textoResultado}
+                            />
+                          ) : <span className="conteo-no-aplica">—</span>}
                         </td>
 
                         <td>
-                          <CeldaConteo
-                            conteo={conteo2}
-                            numeroConteo={2}
-                            detalle={detalle}
-                            abrirModal={
-                              abrirModal
-                            }
-                            obtenerItemsConteo={
-                              obtenerItemsConteo
-                            }
-                            textoResultado={
-                              textoResultado
-                            }
-                          />
+                          {mostrarConteo2 ? (
+                            <CeldaConteo
+                              conteo={conteo2}
+                              numeroConteo={2}
+                              habilitado={!conteo2 && habilitado === 2}
+                              detalle={detalle}
+                              abrirModal={abrirModal}
+                              obtenerItemsConteo={obtenerItemsConteo}
+                              textoResultado={textoResultado}
+                            />
+                          ) : <span className="conteo-no-aplica">—</span>}
                         </td>
 
                         <td>
-                          <CeldaConteo
-                            conteo={conteo3}
-                            numeroConteo={3}
-                            detalle={detalle}
-                            abrirModal={
-                              abrirModal
-                            }
-                            obtenerItemsConteo={
-                              obtenerItemsConteo
-                            }
-                            textoResultado={
-                              textoResultado
-                            }
-                          />
+                          {mostrarConteo3 ? (
+                            <CeldaConteo
+                              conteo={conteo3}
+                              numeroConteo={3}
+                              habilitado={!conteo3 && habilitado === 3}
+                              detalle={detalle}
+                              abrirModal={abrirModal}
+                              obtenerItemsConteo={obtenerItemsConteo}
+                              textoResultado={textoResultado}
+                            />
+                          ) : <span className="conteo-no-aplica">—</span>}
+                        </td>
+
+                        <td>
+                          {lineaApoyo ? (
+                            <div className={`resultado-final ${lineaApoyo.resultado === "conforme" ? "detalle-resultado-conforme" : "detalle-resultado-faltante"}`}>
+                              <span className="resultado-dot" />
+                              <strong>{lineaApoyo.resultado === "conforme" ? "CONFORME" : "NO CONFORME"}</strong>
+                              <small>{lineaApoyo.cantidad_final} · {lineaApoyo.auditor_email}</small>
+                            </div>
+                          ) : validacionApoyo?.estado === "solicitada" && esConteoDiferencia(conteo3) ? (
+                            <span className="resultado-pendiente">Pendiente</span>
+                          ) : <span className="conteo-no-aplica">—</span>}
                         </td>
 
                         <td>
@@ -1624,15 +1714,26 @@ export default function DetalleCosto({ costo, onVolver }) {
                   <th>Cantidad</th>
                   <th>Observación</th>
                   <th>Auditor</th>
+                  <th>Recuentos</th>
                 </tr>
               </thead>
 
               <tbody>
 
                 {noManifestados.map(
-                  (item, index) => (
+                  (item, index) => {
+                    const skuKey = String(item.sku || "").trim().toLowerCase();
+                    const habilitadoDos = reconteosNoManifestados.some(reconteo =>
+                      String(reconteo.sku || "").trim().toLowerCase() === skuKey && Number(reconteo.numero_conteo) === 2
+                    );
+                    const habilitadoTres = reconteosNoManifestados.some(reconteo =>
+                      String(reconteo.sku || "").trim().toLowerCase() === skuKey && Number(reconteo.numero_conteo) === 3
+                    );
+                    const etapa = Number(costo?.conteo_habilitado);
+                    const resultadosReconteo = reconteosNoManifestados.filter(reconteo => Number(reconteo.id) === Number(item.id));
 
-                    <tr key={item.id}>
+                    return (
+                      <tr key={item.id}>
 
                       <td className="numero-no-manifestado">
                         {index + 1}
@@ -1656,8 +1757,47 @@ export default function DetalleCosto({ costo, onVolver }) {
                           "—"}
                       </td>
 
-                    </tr>
-                  )
+                      <td className="no-manifestado-recount-actions">
+                        <div className="no-manifestado-recount-cell">
+                          {resultadosReconteo.length ? (
+                            <div className="no-manifestado-recount-history" aria-label="Historial de recuentos">
+                              {[...resultadosReconteo].sort((a, b) => Number(a.numero_conteo) - Number(b.numero_conteo)).map(reconteo => (
+                                <article className="no-manifestado-recount-entry" key={`${reconteo.id}-${reconteo.numero_conteo}-${reconteo.auditor_id || "usuario"}`}>
+                                  <div className="no-manifestado-recount-main">
+                                    <span className="no-manifestado-recount-count">Conteo {reconteo.numero_conteo}</span>
+                                    <strong>{reconteo.cantidad_reconteo ?? "Pendiente"}</strong>
+                                  </div>
+                                  <div className="no-manifestado-recount-user">
+                                    <span>Realizado por</span>
+                                    <strong title={reconteo.auditor_email || "Sin usuario identificado"}>{reconteo.auditor_email || "Sin usuario identificado"}</strong>
+                                  </div>
+                                </article>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="no-manifestado-recount-empty">Aún no hay recuentos</span>
+                          )}
+                          <div className="no-manifestado-recount-buttons">
+                            {etapa === 2 && !habilitadoDos && (
+                              <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => habilitarReconteoNoManifestado(item, 2)}>Habilitar conteo 2</button>
+                            )}
+                            {etapa === 3 && !habilitadoTres && (
+                              <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => habilitarReconteoNoManifestado(item, 3)}>Habilitar conteo 3</button>
+                            )}
+                            {habilitadoDos && (
+                              <button type="button" className="btn btn-sm btn-primary" onClick={() => setReconteoSeleccionado({ numeroConteo: 2, sku: item.sku })}>Continuar conteo 2</button>
+                            )}
+                            {habilitadoTres && (
+                              <button type="button" className="btn btn-sm btn-primary" onClick={() => setReconteoSeleccionado({ numeroConteo: 3, sku: item.sku })}>Continuar conteo 3</button>
+                            )}
+                          </div>
+                          {avisoReconteo && <span className="support-recount-error" role="alert">{avisoReconteo}</span>}
+                        </div>
+                      </td>
+
+                      </tr>
+                    );
+                  }
                 )}
 
               </tbody>
@@ -1669,6 +1809,16 @@ export default function DetalleCosto({ costo, onVolver }) {
 
       </section>
 
+
+      {reconteoSeleccionado && (
+        <ReconteoNoManifestados
+          costoId={costo.id}
+          numeroConteo={reconteoSeleccionado.numeroConteo}
+          sku={reconteoSeleccionado.sku}
+          onClose={() => setReconteoSeleccionado(null)}
+          onSaved={cargarDetalle}
+        />
+      )}
 
       {/* =====================================================
           MODAL DETALLE DEL CONTEO
@@ -1784,6 +1934,14 @@ export default function DetalleCosto({ costo, onVolver }) {
                     }
                   </strong>
 
+                  {Number(conteoSeleccionado.factor) !== (Number(detalleSeleccionado.factor) > 0 ? Number(detalleSeleccionado.factor) : 1) && (
+                    <div className="modal-factor-cambio">
+                      <span>Plantilla: × {Number(detalleSeleccionado.factor) > 0 ? detalleSeleccionado.factor : 1}</span>
+                      <span>Aplicado: × {conteoSeleccionado.factor}</span>
+                      <em>Modificado</em>
+                    </div>
+                  )}
+
                 </div>
 
                 <div className="modal-resumen-item modal-resumen-final">
@@ -1800,7 +1958,7 @@ export default function DetalleCosto({ costo, onVolver }) {
 
                 </div>
 
-                <div className="modal-resumen-item">
+                <div className={`modal-resumen-item modal-resumen-resultado ${conteoSeleccionado.resultado === "conforme" ? "conforme" : "no-conforme"}`}>
 
                   <span>
                     Resultado
@@ -1928,6 +2086,7 @@ export default function DetalleCosto({ costo, onVolver }) {
 function CeldaConteo({
   conteo,
   numeroConteo,
+  habilitado = false,
   detalle,
   abrirModal,
   obtenerItemsConteo,
@@ -1944,35 +2103,15 @@ function CeldaConteo({
 
         <div className="conteo-card-header">
 
-          <div className="conteo-card-identidad">
-
-            <span className="conteo-card-numero">
-              {numeroConteo}
-            </span>
-
-            <div>
-
-              <span className="conteo-card-kicker">
-                CONTEO
-              </span>
-
-              <strong>
-                Conteo {numeroConteo}
-              </strong>
-
-            </div>
-
-          </div>
-
-          <span className="conteo-card-estado pendiente">
-            PENDIENTE
+          <span className={`conteo-card-estado ${habilitado ? 'habilitado' : 'pendiente'}`}>
+            {habilitado ? 'HABILITADO' : 'PENDIENTE'}
           </span>
 
         </div>
 
         <div className="conteo-card-separator" />
 
-        <div className="conteo-card-pendiente">
+        <div className={`conteo-card-pendiente ${habilitado ? 'conteo-card-disponible' : ''}`}>
 
           <span className="conteo-pendiente-icon">
             ○
@@ -1980,12 +2119,12 @@ function CeldaConteo({
 
           <div>
 
-            <strong>
-              Sin registro
-            </strong>
+            <strong>{habilitado ? 'Disponible' : 'Sin registro'}</strong>
 
             <span>
-              Este conteo todavía no ha sido realizado.
+              {habilitado
+                ? 'Conteo habilitado para esta línea.'
+                : 'Este conteo todavía no ha sido realizado.'}
             </span>
 
           </div>
@@ -2021,26 +2160,6 @@ function CeldaConteo({
       ====================================================== */}
       <div className="conteo-card-header">
 
-        <div className="conteo-card-identidad">
-
-          <span className="conteo-card-numero">
-            {numeroConteo}
-          </span>
-
-          <div>
-
-            <span className="conteo-card-kicker">
-              CONTEO
-            </span>
-
-            <strong>
-              Conteo {numeroConteo}
-            </strong>
-
-          </div>
-
-        </div>
-
         <span
           className={`conteo-card-estado ${
             esConforme
@@ -2066,6 +2185,11 @@ function CeldaConteo({
           SEPARADOR
       ====================================================== */}
       <div className="conteo-card-separator" />
+
+      <div className="conteo-cantidad-fisica">
+        <span>Cantidad física</span>
+        <strong>{conteo.cantidad_final}</strong>
+      </div>
 
 
       {/* =====================================================

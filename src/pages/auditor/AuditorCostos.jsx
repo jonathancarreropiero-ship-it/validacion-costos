@@ -4,14 +4,42 @@ import { useEffect, useState } from 'react'
 import { obtenerCostosAuditor } from '../../services/costos'
 import CostListFilters from '../../components/CostListFilters'
 import ScrollableTable from '../../components/ScrollableTable'
+import ReconteoNoManifestados from '../../components/ReconteoNoManifestados'
+import ValidacionApoyo from '../../components/ValidacionApoyo'
+import { supabase } from '../../supabaseClient'
 import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 function AuditorCostos({
   costos: costosProp = [],
-  onSeleccionar
+  onSeleccionar,
+  onActualizar
 }) {
   const [costosCargados, setCostosCargados] = useState([])
-  const costos = costosProp.length > 0 ? costosProp : costosCargados
+  const costosBase = costosProp.length > 0 ? costosProp : costosCargados
+  const [reconteosDisponibles, setReconteosDisponibles] = useState(null)
+  const [estadosValidacionApoyo, setEstadosValidacionApoyo] = useState(null)
+  const costosBaseConValidacion = estadosValidacionApoyo
+    ? costosBase.map(costo => {
+        const validacion = estadosValidacionApoyo.get(Number(costo.id))
+        return {
+          ...costo,
+          validacion_apoyo_pendiente: validacion?.estado === 'solicitada',
+          validado_por_apoyo: validacion?.estado === 'completada',
+          soy_solicitante_apoyo_final: Boolean(validacion?.soy_solicitante),
+          soy_validador_apoyo_final: Boolean(validacion?.soy_validador),
+          resultado_validacion_apoyo: validacion?.resultado || null
+        }
+      })
+    : costosBase
+  const costos = reconteosDisponibles
+    ? costosBaseConValidacion.map(costo => ({
+        ...costo,
+        reconteo_no_manifestado_habilitado: reconteosDisponibles.has(`${costo.id}:${costo.conteo_habilitado}`)
+          ? Number(costo.conteo_habilitado)
+          : null
+      }))
+    : costosBaseConValidacion
+  const hayReconteosDisponibles = costos.some(costo => costo.reconteo_no_manifestado_habilitado)
 
   const [loading, setLoading] = useState(
     costosProp.length === 0
@@ -23,6 +51,30 @@ function AuditorCostos({
   const [estadoFiltro, setEstadoFiltro] = useState('todos')
   const [resultadoFiltro, setResultadoFiltro] = useState('todos')
   const [alerta, setAlerta] = useState(null)
+  const [reconteoNoManifestadoSeleccionado, setReconteoNoManifestadoSeleccionado] = useState(null)
+  const [validacionApoyoSeleccionada, setValidacionApoyoSeleccionada] = useState(null)
+
+  // El admin puede solicitar apoyo desde otra sesión. Actualiza el estado de
+  // esta acción en vivo sin volver a descargar todo el catálogo de costos.
+  useEffect(() => {
+    let activo = true
+    let consultando = false
+    const actualizarEstados = async () => {
+      if (!navigator.onLine || consultando) return
+      consultando = true
+      const { data, error } = await supabase.rpc('estados_validacion_apoyo_costos')
+      consultando = false
+      if (activo && !error && Array.isArray(data)) {
+        setEstadosValidacionApoyo(new Map(data.map(estado => [Number(estado.costo_id), estado])))
+      }
+    }
+    actualizarEstados()
+    const intervalo = window.setInterval(actualizarEstados, 5000)
+    return () => {
+      activo = false
+      window.clearInterval(intervalo)
+    }
+  }, [])
 
   // ==========================================================
   // CARGAR COSTOS
@@ -53,6 +105,27 @@ function AuditorCostos({
     }
   }, [costosProp.length])
 
+  // El reconteo se cierra para los dos participantes al primer guardado.
+  // Consulta solo el estado de disponibilidad para actualizar el botón en vivo.
+  useEffect(() => {
+    if (!hayReconteosDisponibles) return undefined
+    let activo = true
+    let timer
+    const consultar = async () => {
+      const { data, error } = await supabase.rpc('reconteos_no_manifestados_disponibles_auditor')
+      if (!activo) return
+      if (!error) {
+        setReconteosDisponibles(new Set((data || []).map(item => `${item.costo_id}:${item.numero_conteo}`)))
+      }
+      timer = window.setTimeout(consultar, 5000)
+    }
+    consultar()
+    return () => {
+      activo = false
+      window.clearTimeout(timer)
+    }
+  }, [hayReconteosDisponibles])
+
   async function cargarCostos() {
     setLoading(true)
     try {
@@ -63,6 +136,11 @@ function AuditorCostos({
     } finally {
       setLoading(false)
     }
+  }
+
+  async function actualizarCostos() {
+    if (typeof onActualizar === 'function') await onActualizar()
+    else await cargarCostos()
   }
 
   // ==========================================================
@@ -130,18 +208,6 @@ function AuditorCostos({
             'Este costo ya está finalizado y no admite nuevos conteos.'
         })
       }
-
-      return
-    }
-
-    // No permitir ingresar si otro usuario tiene el bloqueo.
-    if (costo.bloqueado_por_otro) {
-      setAlerta({
-        tipo: 'bloqueo',
-        titulo: 'Costo ocupado',
-        mensaje:
-          'Otro usuario está realizando este costo. Podrás ingresar cuando termine su conteo.'
-      })
 
       return
     }
@@ -271,107 +337,32 @@ function AuditorCostos({
 
   return (
     <section
-      className="auditor-costos"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px'
-      }}
+      className="auditor-costos cost-list-page"
     >
       {/* CABECERA PRINCIPAL */}
 
       <div
-        className="auditor-costos-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: '#ffffff',
-          padding: '24px',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)'
-        }}
+        className="auditor-costos-header cost-list-section-header"
       >
-        <div className="auditor-costos-heading">
-          <span
-            className="auditor-costos-kicker"
-            style={{
-              fontSize: '11px',
-              fontWeight: 750,
-              color: '#1e40af',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              display: 'block',
-              marginBottom: '4px'
-            }}
-          >
-            Gestión de Costos
+        <div className="auditor-costos-heading cost-list-section-heading">
+          <span className="auditor-costos-kicker cost-list-section-kicker">
+            AUDITORÍA
           </span>
 
-          <h2
-            style={{
-              margin: 0,
-              fontSize: '20px',
-              color: '#0f172a',
-              fontWeight: 750
-            }}
-          >
+          <h2>
             Costos disponibles
           </h2>
 
-          <p
-            style={{
-              margin: '4px 0 0',
-              color: '#64748b',
-              fontSize: '13px'
-            }}
-          >
-            Selecciona un costo para realizar el conteo habilitado.
-          </p>
         </div>
 
-        <div
-          className="auditor-costos-total"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: '#f8fafc',
-            padding: '10px 16px',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0'
-          }}
-        >
-          <span
-            style={{
-              color: '#64748b',
-              fontWeight: 600,
-              fontSize: '13px'
-            }}
-          >
-            Total:
-          </span>
+      </div>
 
-          <strong
-            style={{
-              fontSize: '18px',
-              color: '#0f172a'
-            }}
-          >
-            {costos.length}
-          </strong>
-
-          <span
-            style={{
-              color: '#64748b',
-              fontWeight: 600,
-              fontSize: '13px'
-            }}
-          >
-            costos
-          </span>
-        </div>
+      <div className="cost-result-toolbar">
+        <CostListFilters
+          resultado={resultadoFiltro}
+          onResultadoChange={setResultadoFiltro}
+          soloResultados
+        />
       </div>
 
       {/* BUSCADOR */}
@@ -385,10 +376,10 @@ function AuditorCostos({
           modoFecha={modoFechaFiltro}
           onModoFechaChange={setModoFechaFiltro}
           estado={estadoFiltro}
-          onEstadoChange={setEstadoFiltro}
           resultado={resultadoFiltro}
           onResultadoChange={setResultadoFiltro}
           onLimpiar={limpiarFiltrosLista}
+          ocultarResultados
         />
 
         <div
@@ -510,7 +501,7 @@ function AuditorCostos({
                     resultadoOriginal === 'conforme'
 
                   const ocupadoPorOtro =
-                    Boolean(costo.bloqueado_por_otro)
+                    Boolean(costo.bloqueado_por_otro) && !costo.apoyo_habilitado
 
                   const propio =
                     Boolean(costo.bloqueado_por_mi)
@@ -558,10 +549,6 @@ function AuditorCostos({
 
                       <td>
                         <div className="auditor-costo-number">
-                          <span className="auditor-costo-number-icon">
-                            #
-                          </span>
-
                           <strong>
                             {costo.numero_costo}
                           </strong>
@@ -595,6 +582,8 @@ function AuditorCostos({
                             ? obtenerEstadoTexto(costo)
                             : esperandoSiguienteConteo
                               ? 'Esperando habilitación del administrador'
+                              : costo.apoyo_habilitado
+                                ? 'Apoyo habilitado'
                               : ocupadoPorOtro
                                 ? 'En proceso por otro usuario'
                                 : propio
@@ -606,7 +595,9 @@ function AuditorCostos({
                       {/* RESULTADO */}
 
                       <td>
-                        {resultado === 'conforme' ? (
+                        {costo.validado_por_apoyo ? (
+                          <span className="resultado-pill validado-apoyo"><span>✓</span>VALIDADO POR APOYO</span>
+                        ) : resultado === 'conforme' ? (
                           <span className="resultado-badge conforme">
                             <span className="resultado-badge-dot" />
                             CONFORME
@@ -618,7 +609,7 @@ function AuditorCostos({
                           </span>
                         ) : (
                           <span className="resultado-pendiente">
-                            {costo.numero_ultimo_conteo ? 'Pendiente' : 'Sin conteo'}
+                            Pendiente
                           </span>
                         )}
                       </td>
@@ -644,6 +635,18 @@ function AuditorCostos({
                       {/* ACCIÓN */}
 
                       <td>
+                        <div className="d-flex flex-column align-items-start gap-2">
+                        {costo.validacion_apoyo_pendiente && costo.soy_validador_apoyo_final && (
+                          <button type="button" className="btn btn-sm btn-primary" onClick={() => setValidacionApoyoSeleccionada(costo)}>
+                            Realizar última validación
+                          </button>
+                        )}
+                        {costo.validacion_apoyo_pendiente && costo.soy_solicitante_apoyo_final && !costo.soy_validador_apoyo_final && (
+                          <span className="resultado-pendiente">Esperando validación por apoyo</span>
+                        )}
+                        {costo.validado_por_apoyo && (
+                          <span className="resultado-badge conforme"><span className="resultado-badge-dot" />Validado por apoyo</span>
+                        )}
                         <button
                           type="button"
                           className={
@@ -653,13 +656,13 @@ function AuditorCostos({
                                 ? 'btn-costo ocupado'
                                 : 'btn-costo'
                           }
-                          disabled={bloqueado}
+                          disabled={bloqueado || (costo.apoyo_habilitado && !costo.soy_participante_apoyo && costo.usuarios_apoyo_unidos >= 2)}
                           onClick={() => seleccionarCosto(costo)}
                         >
                           {!bloqueado && (
                             <span className="btn-costo-icon">
                               {ocupadoPorOtro
-                                ? '🔒'
+                                ? '↗'
                                 : propio
                                   ? '↻'
                                   : '→'}
@@ -670,12 +673,27 @@ function AuditorCostos({
                             ? obtenerTextoAccion(costo)
                             : esperandoSiguienteConteo
                               ? 'Conteo ya registrado'
+                                : costo.apoyo_habilitado && !costo.soy_participante_apoyo && costo.usuarios_apoyo_unidos >= 2
+                                  ? 'Apoyo completo'
                               : ocupadoPorOtro
-                                ? 'Ver bloqueo'
+                                ? 'Intentar acceso'
                                 : propio
                                   ? `Continuar Conteo ${numeroConteo}`
                                   : obtenerTextoAccion(costo)}
                         </button>
+                        {costo.reconteo_no_manifestado_habilitado && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => setReconteoNoManifestadoSeleccionado({
+                              costoId: costo.id,
+                              numeroConteo: costo.reconteo_no_manifestado_habilitado
+                            })}
+                          >
+                            Continuar no manifestados · Conteo {costo.reconteo_no_manifestado_habilitado}
+                          </button>
+                        )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -771,7 +789,7 @@ function AuditorCostos({
 
             <button
               type="button"
-              onClick={() => setAlerta(null)}
+              onClick={() => { setAlerta(null); window.location.reload() }}
               autoFocus
               style={{
                 width: '100%',
@@ -790,9 +808,32 @@ function AuditorCostos({
           </div>
         </div>
       )}
+
+      {reconteoNoManifestadoSeleccionado && (
+        <ReconteoNoManifestados
+          costoId={reconteoNoManifestadoSeleccionado.costoId}
+          numeroConteo={reconteoNoManifestadoSeleccionado.numeroConteo}
+          onClose={() => setReconteoNoManifestadoSeleccionado(null)}
+          onSaved={actualizarCostos}
+        />
+      )}
+      {validacionApoyoSeleccionada && (
+        <ValidacionApoyo
+          costo={validacionApoyoSeleccionada}
+          onClose={() => setValidacionApoyoSeleccionada(null)}
+          onSaved={async resultado => {
+            setCostosCargados(actuales => actuales.map(costo => Number(costo.id) === Number(validacionApoyoSeleccionada.id)
+              ? { ...costo, validado_por_apoyo: true, resultado: resultado?.resultado === 'conforme' ? 'conforme' : 'no_conforme' }
+              : costo))
+            await actualizarCostos()
+          }}
+        />
+      )}
     </section>
   )
 }
 
 export default AuditorCostos
+
+
 

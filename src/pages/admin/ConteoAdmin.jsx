@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   obtenerDetallesCostoAdmin,
   obtenerConteoAnterior,
-  guardarConteoCosto
+  guardarConteoCosto,
+  obtenerEstadoConteoCompartido,
+  obtenerResumenConteoCompartido,
+  renovarBloqueoCosto
 } from '../../services/costos'
 
 import { supabase } from '../../supabaseClient'
 import { estaOnline, escucharConexion } from '../../services/offlineStorage'
 import ValidationNotice from '../../components/ValidationNotice'
-import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
+import CountQuantityEditor from '../../components/CountQuantityEditor'
+import ScrollableTable from '../../components/ScrollableTable'
 
 
 
@@ -30,6 +34,9 @@ function ConteoAdmin({
 
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [apoyoGuardadoPendiente, setApoyoGuardadoPendiente] = useState(false)
+  const [apoyoConteoCompletado, setApoyoConteoCompletado] = useState(false)
+  const [resumenApoyo, setResumenApoyo] = useState(null)
 
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
@@ -37,6 +44,11 @@ function ConteoAdmin({
   const [usuarioId, setUsuarioId] = useState(usuarioIdInicial || null)
   const [borradorRecuperado, setBorradorRecuperado] = useState(false)
   const [conexionOnline, setConexionOnline] = useState(estaOnline())
+  const onVolverRef = useRef(onVolver)
+
+  useEffect(() => {
+    onVolverRef.current = onVolver
+  }, [onVolver])
 
 
   // ==========================================================
@@ -101,6 +113,70 @@ function ConteoAdmin({
     alDesconectar: () => setConexionOnline(false)
   }), [])
 
+  useEffect(() => {
+    if (!costo?.id || !conexionOnline || apoyoGuardadoPendiente) return undefined
+    let activo = true
+    const renovar = async () => {
+      try {
+        await renovarBloqueoCosto(costo.id)
+      } catch (errorRenovacion) {
+        const mensajeError = String(errorRenovacion?.message || '')
+        if (costo.apoyoHabilitado && /no tienes el bloqueo de este costo/i.test(mensajeError)) {
+          console.warn('Tu sesión compartida sigue activa; Supabase aún responde con la validación del bloqueo individual.')
+          return
+        }
+        if (!activo) return
+        console.error('No se pudo renovar el acceso al conteo:', errorRenovacion)
+        if (/no eres responsable|no eres participante|no autorizado|no está disponible|no tienes el bloqueo|está terminado/i.test(mensajeError)) {
+          setError('El costo fue reiniciado o tu acceso dejó de estar vigente. Volviendo a la lista de costos.')
+          onVolver()
+        } else {
+          setError(mensajeError || 'No se pudo verificar tu acceso al conteo.')
+        }
+      }
+    }
+    renovar()
+    const intervalo = window.setInterval(renovar, 8 * 1000)
+    return () => {
+      activo = false
+      window.clearInterval(intervalo)
+    }
+  }, [costo?.id, costo?.apoyoHabilitado, conexionOnline, apoyoGuardadoPendiente, onVolver])
+
+  useEffect(() => {
+    if (!apoyoGuardadoPendiente || apoyoConteoCompletado) return undefined
+    let activo = true
+    let timer
+    const consultar = async () => {
+      try {
+        const estado = await obtenerEstadoConteoCompartido(costo.id, numeroConteo)
+        if (!activo) return
+        if (estado?.completado) {
+          const resumen = await obtenerResumenConteoCompartido(costo.id, numeroConteo)
+          if (!activo) return
+          setResumenApoyo({
+            conteo: numeroConteo,
+            resultado: estado.resultado === 'conforme' ? 'conforme' : 'no_conforme',
+            resultadoTexto: estado.resultado === 'conforme' ? 'CONFORME' : 'NO CONFORME',
+            lineasConformes: resumen.lineasConformes,
+            lineasDiferencia: resumen.lineasDiferencia
+          })
+          setApoyoConteoCompletado(true)
+          return
+        }
+      } catch (estadoError) {
+        console.error('No se pudo consultar el estado del conteo compartido:', estadoError)
+        if (/no hay un conteo compartido activo|no existe.*sesión|no está disponible/i.test(String(estadoError?.message || ''))) {
+          if (activo) onVolverRef.current?.()
+          return
+        }
+      }
+      timer = window.setTimeout(consultar, 2500)
+    }
+    timer = window.setTimeout(consultar, 2500)
+    return () => { activo = false; window.clearTimeout(timer) }
+  }, [apoyoGuardadoPendiente, apoyoConteoCompletado, costo?.id, numeroConteo])
+
   // ==========================================================
   // CARGAR DETALLES
   // ==========================================================
@@ -114,6 +190,9 @@ function ConteoAdmin({
         setError('')
         setMensaje('')
         setBorradorRecuperado(false)
+        const claveAvisoBorrador = 'conteo-admin-omitir-aviso-borrador'
+        const omitirAvisoBorrador = sessionStorage.getItem(claveAvisoBorrador) === '1'
+        sessionStorage.removeItem(claveAvisoBorrador)
 
         let datos
         try { datos = await obtenerDetallesCostoAdmin(costo.id, numeroConteo) } catch (errorRemoto) {
@@ -137,7 +216,7 @@ function ConteoAdmin({
 
         for (const detalle of datos) {
           let valores = ['']
-          let factor = 1
+          let factor = Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
 
           // --------------------------------------------------
           // CONTEO 1
@@ -265,7 +344,7 @@ function ConteoAdmin({
                   )
                 }
 
-                setBorradorRecuperado(true)
+                if (!omitirAvisoBorrador) setBorradorRecuperado(true)
 
                 setMensaje(
                   'Se recuperó tu avance guardado.'
@@ -278,7 +357,7 @@ function ConteoAdmin({
             )
             if (Array.isArray(borradorAdicional?.noManifestados)) {
               setNoManifestados(borradorAdicional.noManifestados)
-              setBorradorRecuperado(true)
+              if (!omitirAvisoBorrador) setBorradorRecuperado(true)
             }
             if (borradorAdicional?.nuevoNoManifestado) {
               setNuevoNoManifestado({
@@ -286,7 +365,7 @@ function ConteoAdmin({
                 cantidad: String(borradorAdicional.nuevoNoManifestado.cantidad || ''),
                 observacion: String(borradorAdicional.nuevoNoManifestado.observacion || '')
               })
-              setBorradorRecuperado(true)
+              if (!omitirAvisoBorrador) setBorradorRecuperado(true)
             }
           } catch (errorBorrador) {
             console.error(
@@ -670,7 +749,7 @@ function ConteoAdmin({
         }
       }
 
-      if (detalles.length === 0) {
+      if (detalles.length === 0 && !costo.apoyoHabilitado) {
         throw new Error(
           'No existen líneas para guardar.'
         )
@@ -749,6 +828,11 @@ function ConteoAdmin({
           detallesParaGuardar
         )
 
+      if (resultado?.esperando_segundo) {
+        setApoyoGuardadoPendiente(true)
+        return
+      }
+
       // ------------------------------------------------------
       // ELIMINAR BORRADOR SOLO DESPUÉS DE GUARDAR BIEN
       // ------------------------------------------------------
@@ -765,6 +849,25 @@ function ConteoAdmin({
             errorBorrador
           )
         }
+      }
+
+      if (resultado?.apoyo_habilitado) {
+        let resumen = null
+        try {
+          resumen = await obtenerResumenConteoCompartido(costo.id, numeroConteo)
+        } catch (errorResumen) {
+          console.error('No se pudo cargar el resumen compartido persistido:', errorResumen)
+        }
+        setResumenApoyo({
+          conteo: numeroConteo,
+          resultado: resultado.resultado,
+          resultadoTexto: resultado.resultado === 'conforme' ? 'CONFORME' : 'NO CONFORME',
+          lineasConformes: resumen?.lineasConformes ?? resultado.lineasConformes ?? null,
+          lineasDiferencia: resumen?.lineasDiferencia ?? resultado.lineasDiferencia ?? null
+        })
+        setApoyoConteoCompletado(true)
+        setApoyoGuardadoPendiente(true)
+        return
       }
 
       setMensaje(
@@ -788,6 +891,32 @@ function ConteoAdmin({
       )
     } finally {
       setGuardando(false)
+    }
+  }
+
+  function guardarBorrador() {
+    if (!claveBorrador) {
+      setError('No se pudo identificar este conteo para guardar el borrador.')
+      return
+    }
+
+    try {
+      localStorage.setItem(claveBorrador, JSON.stringify({
+        cantidades,
+        factores,
+        noManifestados,
+        nuevoNoManifestado,
+        busqueda,
+        detalles,
+        actualizadoEn: new Date().toISOString()
+      }))
+      if (!guardarBorradorNoManifestadosLocal()) return
+      setError('')
+      setBorradorRecuperado(false)
+      setMensaje('El borrador se guardó en este equipo.')
+    } catch (errorBorrador) {
+      console.error('Error guardando borrador admin:', errorBorrador)
+      setError('No se pudo guardar el borrador en este equipo. Revisa el espacio disponible del navegador.')
     }
   }
 
@@ -861,6 +990,33 @@ function ConteoAdmin({
     )
   }
 
+  if (apoyoGuardadoPendiente) {
+    return (
+      <div className="support-wait-page" role="status" aria-live="polite">
+        {apoyoConteoCompletado && resumenApoyo ? (
+          <div className="shared-count-result-modal" role="dialog" aria-modal="true" aria-labelledby="shared-count-result-title">
+            <span className={`shared-count-result-icon ${resumenApoyo.resultado === 'conforme' ? 'is-ok' : 'is-diff'}`} aria-hidden="true">{resumenApoyo.resultado === 'conforme' ? '✓' : '!'}</span>
+            <h1 id="shared-count-result-title">Conteo {numeroConteo} registrado</h1>
+            <p className={resumenApoyo.resultado === 'conforme' ? 'is-ok-text' : 'is-diff-text'}>{resumenApoyo.resultadoTexto}</p>
+            <div className="shared-count-result-totals">
+              <span>Líneas conformes <strong>{resumenApoyo.lineasConformes ?? '—'}</strong></span>
+              <span>Líneas no conformes <strong>{resumenApoyo.lineasDiferencia ?? '—'}</strong></span>
+            </div>
+            <button type="button" className="support-wait-cancel" onClick={() => { onVolver?.(); window.location.reload() }}>Entendido, continuar</button>
+          </div>
+        ) : (
+          <div className="support-wait-card">
+            <div className="support-wait-orbit"><span /><span /><span /></div>
+            <span className="support-wait-kicker">CONTEO COMPARTIDO</span>
+            <h1>Tu bloque quedó guardado</h1>
+            <p>Espera mientras la otra persona termina su bloque. El resultado se calculará cuando ambos hayan guardado.</p>
+            <div className="support-wait-cost">Costo {costo.numero_costo} · Conteo {numeroConteo}</div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
 
   // ==========================================================
   // RENDER
@@ -868,7 +1024,16 @@ function ConteoAdmin({
 
   return (
     <div className="admin-conteo">
-      <ValidationNotice message={error} onClose={() => setError('')} />
+      <ValidationNotice
+        message={error || (borradorRecuperado ? 'Se recuperó automáticamente el avance que tenías guardado.' : mensaje)}
+        title={error ? undefined : borradorRecuperado ? 'Avance recuperado' : undefined}
+        type={error ? 'error' : 'success'}
+        onClose={() => {
+          if (!error && borradorRecuperado) sessionStorage.setItem('conteo-admin-omitir-aviso-borrador', '1')
+          if (error) setError('')
+          else { setMensaje(''); setBorradorRecuperado(false) }
+        }}
+      />
 
       {/* ======================================================
           CABECERA
@@ -891,50 +1056,22 @@ function ConteoAdmin({
           </button>
 
           <div className="admin-conteo-title-row">
-
-            <div>
-              <span className="admin-conteo-kicker">
-                Validación de Costos
-              </span>
-
-              <h2>
-                Conteo {numeroConteo}
-              </h2>
-
-              <p>
-                Costo #{costo.numero_costo}
-              </p>
-            </div>
-
-            <span className="admin-conteo-badge">
-              Conteo {numeroConteo}
-            </span>
-
+            <span className="admin-conteo-kicker">Validación de Costos</span>
+            <h2>Conteo {numeroConteo}</h2>
+            <p>Costo {costo.numero_costo}</p>
           </div>
 
         </div>
 
 
         <div className="admin-conteo-header-actions">
-          <div className={`conexion-indicador ${conexionOnline ? 'conexion-online' : 'conexion-offline'}`} role="status"><span className="conexion-indicador-dot" aria-hidden="true" /><div className="conexion-indicador-info"><strong>{conexionOnline ? 'Conectado' : 'Sin conexión'}</strong><span>{conexionOnline ? 'Listo para guardar' : 'Avance guardado localmente'}</span></div></div>
-
-
-          <button
-            type="button"
-            className="admin-conteo-btn-principal"
-            onClick={guardar}
-            disabled={
-              guardando
-            }
-          >
-            <span className="admin-conteo-btn-icon">
-              {guardando ? <span className="button-spinner" /> : '✓'}
-            </span>
-
-            {guardando
-              ? 'Guardando...'
-              : 'Guardar conteo'}
-          </button>
+          <div className={`conexion-indicador ${conexionOnline ? 'conexion-online' : 'conexion-offline'}`} role="status">
+            <span className="conexion-indicador-dot" aria-hidden="true" />
+            <div className="conexion-indicador-info">
+              <strong>{conexionOnline ? 'Conectado' : 'Sin conexión'}</strong>
+              <span>{conexionOnline ? 'Listo para guardar' : 'Avance guardado localmente'}</span>
+            </div>
+          </div>
 
         </div>
 
@@ -944,67 +1081,6 @@ function ConteoAdmin({
       {/* ======================================================
           ALERTAS
       ====================================================== */}
-
-      <div className="admin-conteo-alertas">
-
-        {borradorRecuperado && (
-          <div className="admin-conteo-alerta success">
-            <span className="admin-conteo-alerta-icon">
-              ✓
-            </span>
-
-            <div>
-              <strong>
-                Avance recuperado
-              </strong>
-
-              <span>
-                Se recuperó automáticamente el avance que tenías guardado.
-              </span>
-            </div>
-          </div>
-        )}
-
-
-        {error && !esAvisoCantidadesIncompletas(error) && (
-          <div className="admin-conteo-alerta error">
-            <span className="admin-conteo-alerta-icon">
-              !
-            </span>
-
-            <div>
-              <strong>
-                No se pudo completar la operación
-              </strong>
-
-              <span>
-                {error}
-              </span>
-            </div>
-          </div>
-        )}
-
-
-        {mensaje && !borradorRecuperado && (
-          <div className="admin-conteo-alerta success">
-            <span className="admin-conteo-alerta-icon">
-              ✓
-            </span>
-
-            <div>
-              <strong>
-                Operación completada
-              </strong>
-
-              <span>
-                {mensaje}
-              </span>
-            </div>
-          </div>
-        )}
-
-      </div>
-
 
       {/* ======================================================
           RESUMEN
@@ -1110,7 +1186,11 @@ function ConteoAdmin({
 
         <div className="admin-conteo-tabla-wrap">
 
-          <table className="admin-conteo-tabla">
+          <ScrollableTable
+            className="admin-conteo-table-viewport"
+            tableClassName="admin-conteo-tabla"
+            ariaLabel="detalle del conteo del administrador"
+          >
 
             <thead>
               <tr>
@@ -1171,6 +1251,7 @@ function ConteoAdmin({
                   return (
                     <tr
                       key={detalle.id}
+                      className={Number(factor) !== (Number(detalle.factor) > 0 ? Number(detalle.factor) : 1) ? 'fila-factor-modificado' : ''}
                     >
 
                       {/* SKU */}
@@ -1212,93 +1293,21 @@ function ConteoAdmin({
                       {/* CANTIDAD FÍSICA */}
 
                       <td className="admin-conteo-fisica">
-
-                        <span className="admin-conteo-fisica-label">
-                          Esperada
-                        </span>
-
-                        <strong>
-                          {Number(
-                            detalle.cantidad_fisica
-                          )}
-                        </strong>
-
+                        <strong>{Number(detalle.cantidad_fisica)}</strong>
                       </td>
 
 
                       {/* CANTIDADES */}
 
                       <td>
-
-                        <div className="admin-conteo-cantidades">
-
-                          {lista.map(
-                            (
-                              cantidad,
-                              index
-                            ) => (
-                              <div
-                                className="admin-conteo-cantidad-row"
-                                key={
-                                  `cantidad-${detalle.id}-${index}`
-                                }
-                              >
-
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  className="admin-conteo-cantidad-input"
-                                  value={cantidad}
-                                  onChange={
-                                    event =>
-                                      cambiarCantidad(
-                                        detalle.id,
-                                        index,
-                                        event.target.value
-                                      )
-                                  }
-                                  aria-label={`Cantidad ${index + 1} del SKU ${detalle.sku}`}
-                                />
-
-
-                                {lista.length > 1 && (
-                                  <button
-                                    type="button"
-                                    className="admin-conteo-eliminar"
-                                    onClick={
-                                      () =>
-                                        eliminarCantidad(
-                                          detalle.id,
-                                          index
-                                        )
-                                    }
-                                    title="Eliminar cantidad"
-                                    aria-label="Eliminar cantidad"
-                                  >
-                                    ×
-                                  </button>
-                                )}
-
-                              </div>
-                            )
-                          )}
-
-
-                          <button
-                            type="button"
-                            className="admin-conteo-agregar"
-                            onClick={
-                              () =>
-                                agregarCantidad(
-                                  detalle.id
-                                )
-                            }
-                          >
-                            + cantidad
-                          </button>
-
-                        </div>
-
+                        <CountQuantityEditor
+                          cantidades={lista}
+                          onCambiar={(index, valor) => cambiarCantidad(detalle.id, index, valor)}
+                          onAgregar={() => agregarCantidad(detalle.id)}
+                          onEliminar={index => eliminarCantidad(detalle.id, index)}
+                          disabled={guardando}
+                          etiqueta="Cantidad"
+                        />
                       </td>
 
 
@@ -1309,7 +1318,7 @@ function ConteoAdmin({
                         <input
                           type="text"
                           inputMode="decimal"
-                          className="admin-conteo-factor"
+                          className={`admin-conteo-factor ${Number(factor) !== (Number(detalle.factor) > 0 ? Number(detalle.factor) : 1) ? 'factor-modified' : ''}`}
                           value={factor}
                           onChange={
                             event =>
@@ -1320,6 +1329,11 @@ function ConteoAdmin({
                           }
                           aria-label={`Factor del SKU ${detalle.sku}`}
                         />
+                        <span className="admin-conteo-factor-origin">
+                          {Number(factor) !== (Number(detalle.factor) > 0 ? Number(detalle.factor) : 1)
+                            ? `Modificado · Plantilla: × ${Number(detalle.factor) > 0 ? detalle.factor : 1}`
+                            : ''}
+                        </span>
 
                       </td>
 
@@ -1350,7 +1364,7 @@ function ConteoAdmin({
 
             </tbody>
 
-          </table>
+          </ScrollableTable>
 
 
           {detallesFiltrados.length === 0 && (
@@ -1380,7 +1394,7 @@ function ConteoAdmin({
           <div>
             <span>Registro adicional</span>
             <h2 id="admin-no-manifestados-title">No manifestados</h2>
-            <p>Agrega productos encontrados físicamente que no aparecen en el costo. Cada cambio se guarda automáticamente en este equipo y se recupera al volver al conteo.</p>
+            <p>Registra aquí los productos encontrados que no están en el costo.</p>
           </div>
           <strong>{noManifestados.length}</strong>
         </div>
@@ -1416,6 +1430,28 @@ function ConteoAdmin({
         ) : (
           <p className="admin-no-manifestados-empty">Aún no agregas productos no manifestados.</p>
         )}
+      </section>
+
+      <section className="auditor-save-section admin-conteo-save-section" aria-label="Guardar avance del conteo">
+        <div className="auditor-save-actions">
+          <button
+            type="button"
+            className="btn-guardar-borrador"
+            onClick={guardarBorrador}
+            disabled={guardando || cargando}
+          >
+            <span aria-hidden="true">⬇</span>
+            Guardar borrador
+          </button>
+          <button
+            type="button"
+            className="btn-guardar-costo"
+            onClick={guardar}
+            disabled={guardando || cargando || !conexionOnline}
+          >
+            {guardando ? <><span className="button-spinner" /> Guardando...</> : <><span aria-hidden="true">✓</span> Guardar Conteo {numeroConteo}</>}
+          </button>
+        </div>
       </section>
 
     </div>

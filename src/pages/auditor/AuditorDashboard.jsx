@@ -14,13 +14,15 @@ import {
   obtenerDetallesAuditor,
   guardarConteoCosto,
   iniciarCosto,
-  renovarBloqueoCosto
+  renovarBloqueoCosto,
+  obtenerEstadoConteoCompartido,
+  obtenerResumenConteoCompartido
 } from '../../services/costos'
 
 import ConteoAuditor from './ConteoAuditor'
+import ScrollableTable from '../../components/ScrollableTable'
 import AuditorCostos from './AuditorCostos'
 import ValidationNotice from '../../components/ValidationNotice'
-import { esAvisoCantidadesIncompletas } from '../../components/validationNoticeUtils'
 
 // ==========================================================
 // BORRADOR GENERAL
@@ -447,7 +449,7 @@ function ModalResultadoConteo({ resultado, onCerrar, onReintentar, reintentando 
             }}
           >
             <span style={{ color: '#475569', fontSize: '14px' }}>
-              Líneas con diferencias
+              Líneas no conformes
             </span>
 
             <strong
@@ -461,6 +463,23 @@ function ModalResultadoConteo({ resultado, onCerrar, onReintentar, reintentando 
             </strong>
           </div>
         </div>
+
+        {resultado.factoresModificados?.length > 0 && (
+          <section className="auditor-saved-factor-changes" aria-label="Factores modificados en este conteo">
+            <div>
+              <strong>Factores modificados</strong>
+              <span>{resultado.factoresModificados.length} {resultado.factoresModificados.length === 1 ? 'línea modificada' : 'líneas modificadas'}</span>
+            </div>
+            <ul>
+              {resultado.factoresModificados.map(item => (
+                <li key={item.id}>
+                  <strong>{item.sku}</strong>
+                  <span>Plantilla × {item.factorPlantilla} <b>→</b> Aplicado × {item.factorAplicado}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {resultado.advertencia && (
           <div
@@ -506,7 +525,10 @@ function ModalResultadoConteo({ resultado, onCerrar, onReintentar, reintentando 
 
         <button
           type="button"
-          onClick={onCerrar}
+          onClick={() => {
+            onCerrar?.()
+            window.location.reload()
+          }}
           autoFocus
           style={{
             width: '100%',
@@ -534,6 +556,7 @@ function ModalResultadoConteo({ resultado, onCerrar, onReintentar, reintentando 
 
 function AuditorDashboard() {
   const sesionActualRef = useRef(null)
+  const cancelarEsperaApoyoRef = useRef(false)
   const [usuarioId, setUsuarioId] = useState(null)
   const [usuarioNombre, setUsuarioNombre] = useState('Auditor')
   const [costos, setCostos] = useState([])
@@ -548,22 +571,72 @@ function AuditorDashboard() {
     observacion: ''
   })
 
-  const [borradorGuardado, setBorradorGuardado] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [filtroFactorModificado, setFiltroFactorModificado] = useState('todos')
   const [versionLimpieza, setVersionLimpieza] = useState(0)
   const [restauracionRealizada, setRestauracionRealizada] = useState(false)
   const [loading, setLoading] = useState(true)
   const [errorCargaCostos, setErrorCargaCostos] = useState(false)
   const [loadingDetalles, setLoadingDetalles] = useState(false)
+  const [esperandoApoyo, setEsperandoApoyo] = useState(false)
+  const [apoyoGuardadoPendiente, setApoyoGuardadoPendiente] = useState(false)
+  const [apoyoConteoCompletado, setApoyoConteoCompletado] = useState(false)
   const [guardandoCosto, setGuardandoCosto] = useState(false)
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [resultadoGuardado, setResultadoGuardado] = useState(null)
   const [noManifestadosPendientes, setNoManifestadosPendientes] = useState(null)
   const [reintentandoNoManifestados, setReintentandoNoManifestados] = useState(false)
+  const [avisoNoManifestadosCerrado, setAvisoNoManifestadosCerrado] = useState(false)
 
   const [conexionOnline, setConexionOnline] = useState(estaOnline())
   const [pendientesOffline, setPendientesOffline] = useState(0)
+  const apoyoCostoId = costoSeleccionado?.id
+  const apoyoNumeroConteo = costoSeleccionado?.conteo_habilitado
+
+  useEffect(() => {
+    if (!apoyoGuardadoPendiente || apoyoConteoCompletado || !apoyoCostoId) return undefined
+    let activo = true
+    let timer
+    const consultar = async () => {
+      try {
+        const estado = await obtenerEstadoConteoCompartido(apoyoCostoId, apoyoNumeroConteo)
+        if (!activo) return
+        if (estado?.completado) {
+          const resumen = await obtenerResumenConteoCompartido(apoyoCostoId, apoyoNumeroConteo)
+          if (!activo) return
+          setResultadoGuardado({
+            conteo: Number(apoyoNumeroConteo),
+            resultado: estado.resultado === 'conforme' ? 'conforme' : 'no_conforme',
+            resultadoTexto: estado.resultado === 'conforme' ? 'CONFORME' : 'NO CONFORME',
+            lineasConformes: resumen.lineasConformes,
+            lineasDiferencia: resumen.lineasDiferencia,
+            factoresModificados: []
+          })
+          setApoyoConteoCompletado(true)
+          return
+        }
+      } catch (estadoError) {
+        console.error('No se pudo consultar el estado del conteo compartido:', estadoError)
+        if (/no hay un conteo compartido activo|no existe.*sesión|no está disponible/i.test(String(estadoError?.message || ''))) {
+          if (activo) {
+            setError('El administrador reinició el costo. Tu conteo se cerró y el acceso quedó liberado.')
+            setApoyoGuardadoPendiente(false)
+            setApoyoConteoCompletado(false)
+            setCostoSeleccionado(null)
+            setDetalles([])
+            setBorradores({})
+            setNoManifestados([])
+            limpiarSesionActual(usuarioId)
+          }
+          return
+        }
+      }
+      timer = window.setTimeout(consultar, 2500)
+    }
+    timer = window.setTimeout(consultar, 2500)
+    return () => { activo = false; window.clearTimeout(timer) }
+  }, [apoyoGuardadoPendiente, apoyoConteoCompletado, apoyoCostoId, apoyoNumeroConteo, usuarioId])
 
   // ==========================================================
   // CERRAR VENTANA DEL RESULTADO
@@ -737,6 +810,7 @@ function AuditorDashboard() {
   // ==========================================================
 
   const seleccionarCosto = useCallback(async (costo, opciones = {}) => {
+    cancelarEsperaApoyoRef.current = false
     try {
       setError('')
       setMensaje('')
@@ -752,8 +826,27 @@ function AuditorDashboard() {
         throw new Error('El costo no tiene un conteo habilitado.')
       }
 
+      let accesoCosto = null
       if (conexionOnline) {
-        try { await iniciarCosto(costo.id) } catch (errorInicio) {
+        try {
+          accesoCosto = await iniciarCosto(costo.id)
+          if (accesoCosto?.esperando_segundo) {
+            setCostoSeleccionado(costo)
+            setDetalles([])
+            setLoadingDetalles(true)
+            setEsperandoApoyo(true)
+            while (accesoCosto?.esperando_segundo && !cancelarEsperaApoyoRef.current) {
+              await new Promise(resolve => window.setTimeout(resolve, 2200))
+              if (cancelarEsperaApoyoRef.current) return
+              accesoCosto = await iniciarCosto(costo.id)
+            }
+            if (cancelarEsperaApoyoRef.current) return
+            if (costo.apoyoHabilitado && !accesoCosto?.apoyo_habilitado) {
+              throw new Error('El apoyo fue cancelado o el costo se reinició. Vuelve a la lista para ingresar nuevamente.')
+            }
+            setEsperandoApoyo(false)
+          }
+        } catch (errorInicio) {
           console.error('Error iniciando el costo:', errorInicio)
           throw new Error(errorInicio?.message || 'No se pudo iniciar el costo.', { cause: errorInicio })
         }
@@ -762,11 +855,10 @@ function AuditorDashboard() {
         if (Number(sesionLocal?.costoId) !== Number(costo.id) || Number(sesionLocal?.numeroConteo) !== numeroConteo) throw new Error('Sin conexión solo puedes retomar el costo ya iniciado en este equipo.')
       }
 
-      setCostoSeleccionado(costo)
+      setCostoSeleccionado({ ...costo, apoyoHabilitado: Boolean(accesoCosto?.apoyo_habilitado) })
       setDetalles([])
       setBorradores({})
       setNoManifestados([])
-      setBorradorGuardado(false)
       setBusqueda(opciones.busqueda || '')
       setLoadingDetalles(true)
 
@@ -791,7 +883,6 @@ function AuditorDashboard() {
         if (borrador.nuevoNoManifestado) {
           setNuevoNoManifestado(borrador.nuevoNoManifestado)
         }
-        setBorradorGuardado(true)
       }
 
       const borradorNoManifestados = cargarNoManifestadosLocal(
@@ -812,7 +903,6 @@ function AuditorDashboard() {
             observacion: ''
           }
         )
-        setBorradorGuardado(true)
       }
 
       guardarSesionActual(usuarioId, {
@@ -829,6 +919,7 @@ function AuditorDashboard() {
       console.error(err)
       setError(err?.message || 'No se pudo abrir el costo.')
       setCostoSeleccionado(null)
+      setEsperandoApoyo(false)
     } finally {
       setLoadingDetalles(false)
     }
@@ -839,7 +930,7 @@ function AuditorDashboard() {
   // ==========================================================
 
   useEffect(() => {
-    if (!usuarioId || !costoSeleccionado) return
+    if (!usuarioId || !costoSeleccionado || esperandoApoyo) return
 
     const costoId = costoSeleccionado.id
 
@@ -851,25 +942,38 @@ function AuditorDashboard() {
           'No se pudo renovar el bloqueo:',
           errorRenovacion
         )
+        const mensajeError = String(errorRenovacion?.message || '')
 
-        setError(
-          'Se perdió el acceso a este costo. Otro usuario podría estar trabajando en él.'
-        )
+        // En versiones anteriores del RPC, el primer participante de apoyo
+        // intentaba renovar un bloqueo individual que nunca se creó. Mantener
+        // la sesión en pantalla evita expulsarlo mientras se aplica la RPC
+        // corregida en Supabase.
+        if (
+          costoSeleccionado.apoyoHabilitado &&
+          /no tienes el bloqueo de este costo/i.test(mensajeError)
+        ) {
+          return
+        }
 
-        setCostoSeleccionado(null)
-        setDetalles([])
-        setBorradores({})
-        setNoManifestados([])
-        limpiarSesionActual(usuarioId)
+        if (/no eres responsable|no eres participante|no autorizado|no está disponible|no tienes el bloqueo|está terminado/i.test(mensajeError)) {
+          setError('El costo fue reiniciado o tu acceso dejó de estar vigente. Volviendo a la lista de costos.')
+          setCostoSeleccionado(null)
+          setDetalles([])
+          setBorradores({})
+          setNoManifestados([])
+          limpiarSesionActual(usuarioId)
+        } else {
+          setError(mensajeError || 'No se pudo verificar tu acceso al costo. Reintentaremos en unos segundos.')
+        }
       }
     }
 
     renovar()
 
-    const intervalo = setInterval(renovar, 60 * 1000)
+    const intervalo = setInterval(renovar, 8 * 1000)
 
     return () => clearInterval(intervalo)
-  }, [usuarioId, costoSeleccionado])
+  }, [usuarioId, costoSeleccionado, esperandoApoyo])
 
   // ==========================================================
   // RESTAURAR SESIÓN
@@ -899,7 +1003,7 @@ function AuditorDashboard() {
       item => Number(item.id) === Number(sesion.costoId)
     )
 
-    if (!costo || costo.estado === 'terminado') {
+    if (!costo || costo.estado === 'pendiente' || costo.estado === 'terminado') {
       limpiarSesionActual(usuarioId)
       setRestauracionRealizada(true)
       return
@@ -932,6 +1036,10 @@ function AuditorDashboard() {
   // ==========================================================
 
   function volverCostos() {
+    cancelarEsperaApoyoRef.current = true
+    setEsperandoApoyo(false)
+    setApoyoGuardadoPendiente(false)
+    setApoyoConteoCompletado(false)
     setCostoSeleccionado(null)
     setDetalles([])
     setBorradores({})
@@ -953,7 +1061,6 @@ function AuditorDashboard() {
       [datos.detalleId]: datos
     }))
 
-    setBorradorGuardado(true)
 
     if (sesionActualRef.current) {
       guardarSesionActual(usuarioId, sesionActualRef.current)
@@ -1014,7 +1121,6 @@ function AuditorDashboard() {
       return false
     }
     setError('')
-    setBorradorGuardado(true)
     return true
   }
 
@@ -1078,7 +1184,6 @@ function AuditorDashboard() {
     const listaActualizada = noManifestados.filter(item => item.id !== id)
     guardarNoManifestadosDelCosto(listaActualizada)
     setNoManifestados(listaActualizada)
-    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -1101,7 +1206,6 @@ function AuditorDashboard() {
     guardarNoManifestadosDelCosto(listaActualizada)
     setNoManifestados(listaActualizada)
 
-    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -1147,7 +1251,6 @@ function AuditorDashboard() {
     )
     guardarNoManifestadosDelCosto()
 
-    setBorradorGuardado(true)
   }
 
   // ==========================================================
@@ -1230,6 +1333,7 @@ function AuditorDashboard() {
 
   async function guardarCosto() {
     if (!costoSeleccionado || guardandoCosto) return
+    let noManifestadosGuardadosAntes = false
 
     try {
       setGuardandoCosto(true)
@@ -1255,7 +1359,7 @@ function AuditorDashboard() {
         throw new Error('El número de conteo no es válido.')
       }
 
-      if (detalles.length === 0) {
+      if (detalles.length === 0 && !costoSeleccionado.apoyoHabilitado) {
         throw new Error('No existen productos para guardar.')
       }
 
@@ -1333,6 +1437,11 @@ function AuditorDashboard() {
         return
       }
 
+      if (costoSeleccionado.apoyoHabilitado) {
+        await guardarNoManifestadosOficiales()
+        noManifestadosGuardadosAntes = true
+      }
+
       // ------------------------------------------------------
       // GUARDAR CONTEO EN SUPABASE
       // ------------------------------------------------------
@@ -1349,7 +1458,14 @@ function AuditorDashboard() {
         )
       }
 
+      if (respuestaGuardado.esperando_segundo) {
+        setApoyoGuardadoPendiente(true)
+        return
+      }
+
       if (
+        !respuestaGuardado.apoyo_habilitado &&
+        !costoSeleccionado.apoyoHabilitado &&
         Number(respuestaGuardado.totalLineas) !==
         detallesParaGuardar.length
       ) {
@@ -1387,7 +1503,7 @@ function AuditorDashboard() {
       let advertenciaNoManifestados = ''
 
       try {
-        await guardarNoManifestadosOficiales()
+        if (!noManifestadosGuardadosAntes) await guardarNoManifestadosOficiales()
         setNoManifestadosPendientes(null)
       } catch (errorNoManifestados) {
         console.error(
@@ -1412,16 +1528,35 @@ function AuditorDashboard() {
       // CAPTURAR RESUMEN DEL RESULTADO
       // ------------------------------------------------------
 
+      const factoresModificados = detalles.flatMap(detalle => {
+        const factorPlantilla = Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
+        const valorBorrador = borradores[detalle.id]?.factor
+        const factorAplicado = valorBorrador === undefined || valorBorrador === null
+          ? factorPlantilla
+          : Number(valorBorrador)
+        return Number.isFinite(factorAplicado) && factorAplicado !== factorPlantilla
+          ? [{ id: detalle.id, sku: detalle.sku, factorPlantilla, factorAplicado }]
+          : []
+      })
+      let resumenCompartido = null
+      if (respuestaGuardado.apoyo_habilitado) {
+        try {
+          resumenCompartido = await obtenerResumenConteoCompartido(costoSeleccionado.id, numeroConteo)
+        } catch (errorResumen) {
+          console.error('No se pudo cargar el resumen compartido persistido:', errorResumen)
+        }
+      }
       const resumenResultado = {
         conteo: numeroConteo,
+        factoresModificados,
         resultado: resultadoReconocido
           ? resultadoServidor
           : 'no_disponible',
         resultadoTexto,
         lineasConformes:
-          respuestaGuardado.lineasConformes ?? null,
+          resumenCompartido?.lineasConformes ?? respuestaGuardado.lineasConformes ?? null,
         lineasDiferencia:
-          respuestaGuardado.lineasDiferencia ?? null,
+          resumenCompartido?.lineasDiferencia ?? respuestaGuardado.lineasDiferencia ?? null,
         advertencia: advertenciaNoManifestados
       }
 
@@ -1453,7 +1588,6 @@ function AuditorDashboard() {
       setNoManifestados([])
       setCostoSeleccionado(null)
       setVersionLimpieza(valor => valor + 1)
-      setBorradorGuardado(false)
 
       // ------------------------------------------------------
       // MOSTRAR VENTANA CON EL RESULTADO
@@ -1488,8 +1622,18 @@ function AuditorDashboard() {
       )
     }
 
+    if (filtroFactorModificado !== 'todos') {
+      lista = lista.filter(detalle => {
+        const factorPlantilla = Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
+        const factorBorrador = borradores[detalle.id]?.factor
+        const factorActual = factorBorrador === undefined || factorBorrador === null ? factorPlantilla : Number(factorBorrador)
+        const modificado = Number.isFinite(factorActual) && factorActual !== factorPlantilla
+        return filtroFactorModificado === 'modificados' ? modificado : !modificado
+      })
+    }
+
     return lista
-  }, [detalles, busqueda])
+  }, [detalles, busqueda, borradores, filtroFactorModificado])
 
   // ==========================================================
   // CONTADORES
@@ -1504,7 +1648,17 @@ function AuditorDashboard() {
   if (!costoSeleccionado) {
     return (
       <div className="auditor-page">
-        <ValidationNotice message={error} onClose={() => setError('')} />
+        <ValidationNotice
+          message={error || mensaje || (noManifestadosPendientes && !avisoNoManifestadosCerrado ? 'Hay no manifestados pendientes de sincronizar. El respaldo local se conservará hasta confirmar el envío.' : '')}
+          title={!error && !mensaje && noManifestadosPendientes ? 'Sincronización pendiente' : undefined}
+          type={error ? 'error' : mensaje ? 'success' : 'warning'}
+          onClose={() => error ? setError('') : mensaje ? setMensaje('') : setAvisoNoManifestadosCerrado(true)}
+          action={errorCargaCostos && error
+            ? { label: loading ? 'Actualizando…' : 'Reintentar', onClick: cargarCostos, disabled: loading }
+            : !error && !mensaje && noManifestadosPendientes
+              ? { label: reintentandoNoManifestados ? 'Reintentando…' : 'Reintentar sincronización', onClick: reintentarGuardadoNoManifestados, disabled: reintentandoNoManifestados }
+              : undefined}
+        />
         <ModalResultadoConteo
           resultado={resultadoGuardado}
           onCerrar={cerrarResultadoGuardado}
@@ -1543,45 +1697,54 @@ function AuditorDashboard() {
             </div>
           </header>
 
-          {mensaje && (
-            <div className="auditor-alert success" role="status">
-              <span className="auditor-alert-icon">✓</span>
-              <span>{mensaje}</span>
-            </div>
-          )}
-
-          {error && !esAvisoCantidadesIncompletas(error) && (
-            <div className="auditor-alert error" role="alert">
-              <span className="auditor-alert-icon">!</span>
-              <span>{error}</span>
-              {errorCargaCostos && (
-                <button
-                  type="button"
-                  className="auditor-alert-action"
-                  onClick={cargarCostos}
-                  disabled={loading}
-                >
-                  {loading ? 'Actualizando…' : 'Reintentar'}
-                </button>
-              )}
-            </div>
-          )}
-
-          {noManifestadosPendientes && (
-            <div className="auditor-alert error" role="alert">
-              <span className="auditor-alert-icon">!</span>
-              <span>Hay no manifestados pendientes de sincronizar. El respaldo local se conservará hasta confirmar el envío.</span>
-              <button type="button" onClick={reintentarGuardadoNoManifestados} disabled={reintentandoNoManifestados}>
-                {reintentandoNoManifestados ? 'Reintentando...' : 'Reintentar sincronización'}
-              </button>
-            </div>
-          )}
-
           <AuditorCostos
             costos={costos}
             loading={loading}
             onSeleccionar={seleccionarCosto}
+          onActualizar={cargarCostos}
           />
+        </div>
+      </div>
+    )
+  }
+
+  if (esperandoApoyo) {
+    return (
+      <div className="support-wait-page" role="status" aria-live="polite">
+        <div className="support-wait-card">
+          <div className="support-wait-orbit"><span /><span /><span /></div>
+          <span className="support-wait-kicker">CONTEO COMPARTIDO</span>
+          <h1>Esperando al segundo usuario</h1>
+          <p>El administrador habilitó apoyo para este conteo. En cuanto se una la otra persona, ambos recibirán sus líneas asignadas.</p>
+          <div className="support-wait-cost">Costo {costoSeleccionado?.numero_costo} · Conteo {costoSeleccionado?.conteo_habilitado}</div>
+          <button type="button" className="support-wait-cancel" onClick={volverCostos}>Volver a costos</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (apoyoGuardadoPendiente) {
+    if (apoyoConteoCompletado && resultadoGuardado) {
+      return (
+        <ModalResultadoConteo
+          resultado={resultadoGuardado}
+          onCerrar={() => {
+            cerrarResultadoGuardado()
+            volverCostos()
+          }}
+          onReintentar={null}
+          reintentando={false}
+        />
+      )
+    }
+    return (
+      <div className="support-wait-page" role="status" aria-live="polite">
+        <div className="support-wait-card">
+          <div className="support-wait-orbit"><span /><span /><span /></div>
+          <span className="support-wait-kicker">CONTEO COMPARTIDO</span>
+          <h1>Tu bloque quedó guardado</h1>
+          <p>Espera mientras la otra persona termina su bloque. El resultado se calculará cuando ambos hayan guardado.</p>
+          <div className="support-wait-cost">Costo {costoSeleccionado.numero_costo} · Conteo {costoSeleccionado.conteo_habilitado}</div>
         </div>
       </div>
     )
@@ -1597,7 +1760,11 @@ function AuditorDashboard() {
 
   return (
     <div className="auditor-page">
-      <ValidationNotice message={error} onClose={() => setError('')} />
+      <ValidationNotice
+        message={error || mensaje}
+        type={error ? 'error' : 'success'}
+        onClose={() => error ? setError('') : setMensaje('')}
+      />
       <div className="auditor-main">
         <header className="auditor-topbar">
           <div className="auditor-cost-header">
@@ -1617,7 +1784,7 @@ function AuditorDashboard() {
               </span>
 
               <h1>
-                Costo #{costoSeleccionado.numero_costo}
+                Costo {costoSeleccionado.numero_costo}
               </h1>
             </div>
 
@@ -1653,20 +1820,6 @@ function AuditorDashboard() {
             </div>
           </div>
         </header>
-
-        {mensaje && (
-          <div className="auditor-alert success" role="status">
-            <span className="auditor-alert-icon">✓</span>
-            <span>{mensaje}</span>
-          </div>
-        )}
-
-        {error && !esAvisoCantidadesIncompletas(error) && (
-          <div className="auditor-alert error" role="alert">
-            <span className="auditor-alert-icon">!</span>
-            <span>{error}</span>
-          </div>
-        )}
 
         {/* RESUMEN */}
 
@@ -1719,6 +1872,15 @@ function AuditorDashboard() {
             )}
           </div>
 
+          <label className="auditor-factor-filter">
+            <span>Factor</span>
+            <select className="form-select form-select-sm" value={filtroFactorModificado} onChange={event => setFiltroFactorModificado(event.target.value)} aria-label="Filtrar por factor modificado">
+              <option value="todos">Todos</option>
+              <option value="modificados">Modificados</option>
+              <option value="sin_modificar">Sin modificar</option>
+            </select>
+          </label>
+
           <div className="auditor-search-info">
             Mostrando <strong>{detallesFiltrados.length}</strong> de{' '}
             <strong>{totalDetalles}</strong> líneas
@@ -1731,7 +1893,7 @@ function AuditorDashboard() {
           <div className="auditor-table-heading">
             <div>
               <span className="auditor-section-kicker">
-                Detalle del conteo
+                Productos incluidos en el costo
               </span>
 
               <h2>Productos a validar</h2>
@@ -1752,12 +1914,15 @@ function AuditorDashboard() {
               <div className="auditor-empty-icon">⌕</div>
               <h3>No hay productos para este filtro</h3>
               <p>
-                Prueba cambiando la búsqueda o el filtro de resultado.
+                Prueba cambiando la búsqueda o el filtro del factor.
               </p>
             </div>
           ) : (
-            <div className="auditor-table-wrapper">
-              <table className="auditor-table">
+            <ScrollableTable
+              className="auditor-table-wrapper"
+              tableClassName="auditor-table"
+              ariaLabel="productos del conteo del auditor"
+            >
                 <thead>
                   <tr>
                     <th className="col-sku">SKU</th>
@@ -1770,8 +1935,15 @@ function AuditorDashboard() {
                 </thead>
 
                 <tbody>
-                  {detallesFiltrados.map(detalle => (
-                    <tr key={detalle.id}>
+                  {detallesFiltrados.map(detalle => {
+                    const borrador = borradores[detalle.id]
+                    const factorPlantilla = Number(detalle.factor) > 0 ? Number(detalle.factor) : 1
+                    const factorActual = borrador?.factor
+                    const factorModificado = factorActual !== undefined && factorActual !== null &&
+                      Number(factorActual) !== factorPlantilla
+
+                    return (
+                    <tr key={detalle.id} className={factorModificado ? 'fila-factor-modificado' : ''}>
                       <td>
                         <strong className="auditor-sku">
                           {detalle.sku}
@@ -1816,10 +1988,10 @@ function AuditorDashboard() {
                         })()}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
-              </table>
-            </div>
+            </ScrollableTable>
           )}
         </section>
 
@@ -1834,9 +2006,7 @@ function AuditorDashboard() {
 
               <h2>No manifestados</h2>
 
-              <p>
-                Registra productos encontrados físicamente que no aparecen en el costo.
-              </p>
+              <p>Registra aquí los productos encontrados que no están en el costo.</p>
             </div>
 
             <span className="auditor-section-badge">
@@ -1980,24 +2150,6 @@ function AuditorDashboard() {
         {/* GUARDAR */}
 
         <section className="auditor-save-section">
-          <div className="auditor-save-info">
-            <span className="auditor-save-status-icon">
-              {borradorGuardado ? '✓' : '•'}
-            </span>
-
-            <div>
-              <strong>
-                {borradorGuardado
-                  ? 'Cambios guardados localmente'
-                  : 'Conteo en edición'}
-              </strong>
-
-              <span>
-                Puedes guardar un borrador o finalizar el conteo cuando hayas completado las líneas.
-              </span>
-            </div>
-          </div>
-
           <div className="auditor-save-actions">
             <button
               type="button"

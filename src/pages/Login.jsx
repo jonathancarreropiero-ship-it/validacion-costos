@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import ValidationNotice from '../components/ValidationNotice'
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('')
@@ -34,6 +35,7 @@ function Login({ onLogin }) {
 
   return (
     <main className="login-page">
+      <ValidationNotice message={error} title="No fue posible iniciar sesión" onClose={() => setError('')} />
       <div className="login-background-shape shape-one" aria-hidden="true" />
       <div className="login-background-shape shape-two" aria-hidden="true" />
 
@@ -108,18 +110,6 @@ function Login({ onLogin }) {
                 />
               </div>
             </div>
-
-            {error && (
-              <div className="login-error" role="alert">
-                <div className="login-error-icon" aria-hidden="true">
-                  !
-                </div>
-                <div className="login-error-content">
-                  <strong>No fue posible iniciar sesión</strong>
-                  <p>{error}</p>
-                </div>
-              </div>
-            )}
 
             <button className="login-button" type="submit" disabled={loading}>
               {loading ? (

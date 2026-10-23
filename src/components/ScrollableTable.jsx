@@ -1,6 +1,6 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
-/** Provides a persistent horizontal control for wide tables. */
+/** Horizontal table viewport with mouse drag and native touch scrolling. */
 export default function ScrollableTable({
   className = '',
   tableClassName = '',
@@ -8,86 +8,60 @@ export default function ScrollableTable({
   children
 }) {
   const viewportRef = useRef(null)
-  const tableRef = useRef(null)
-  const [scrollState, setScrollState] = useState({ left: 0, max: 0 })
+  const dragRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
 
-  const updateMetrics = useCallback(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    setScrollState(current => ({
-      max,
-      left: Math.min(current.left, max)
-    }))
-  }, [])
+  function comenzarArrastre(event) {
+    if (event.pointerType === 'touch' || event.button !== 0) return
+    if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return
 
-  useLayoutEffect(() => {
-    const table = tableRef.current
-    const viewport = viewportRef.current
-    if (!table || !viewport) return undefined
-
-    viewport.scrollLeft = 0
-    updateMetrics()
-
-    const observer = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(updateMetrics)
-      : null
-    observer?.observe(table)
-    observer?.observe(viewport)
-    window.addEventListener('resize', updateMetrics)
-
-    return () => {
-      observer?.disconnect()
-      window.removeEventListener('resize', updateMetrics)
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: viewportRef.current?.scrollLeft || 0,
+      movido: false
     }
-  }, [updateMetrics])
-
-  const handleViewportScroll = event => {
-    const left = event.currentTarget.scrollLeft
-    setScrollState(current => ({
-      ...current,
-      left: Math.min(left, current.max)
-    }))
+    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  const handleRangeChange = event => {
-    const left = Number(event.currentTarget.value)
-    if (viewportRef.current) viewportRef.current.scrollLeft = left
-    setScrollState(current => ({ ...current, left }))
+  function moverTabla(event) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !viewportRef.current) return
+
+    const desplazamiento = event.clientX - drag.startX
+    if (Math.abs(desplazamiento) > 3) {
+      drag.movido = true
+      setDragging(true)
+      event.preventDefault()
+    }
+    viewportRef.current.scrollLeft = drag.scrollLeft - desplazamiento
+  }
+
+  function terminarArrastre(event) {
+    if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setDragging(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
   }
 
   return (
-    <div className="scrollable-table-shell">
-      <div className="scrollable-table-sticky-control">
-        <input
-          className="scrollable-table-control"
-          type="range"
-          min="0"
-          max={scrollState.max}
-          step="1"
-          value={Math.min(scrollState.left, scrollState.max)}
-          onChange={handleRangeChange}
-          style={{ '--scroll-progress': `${scrollState.max > 0
-            ? (scrollState.left / scrollState.max) * 100
-            : 0}%` }}
-          aria-label={`Desplazar ${ariaLabel} horizontalmente`}
-          aria-valuetext={scrollState.max > 0
-            ? `${Math.round((scrollState.left / scrollState.max) * 100)}%`
-            : 'Inicio'}
-          disabled={scrollState.max === 0}
-        />
-      </div>
-      <div
-        ref={viewportRef}
-        className={`scrollable-table-viewport ${className}`.trim()}
-        role="region"
-        aria-label={ariaLabel}
-        onScroll={handleViewportScroll}
-      >
-        <table ref={tableRef} className={tableClassName}>
-          {children}
-        </table>
-      </div>
+    <div
+      ref={viewportRef}
+      className={`scrollable-table-viewport ${className} ${dragging ? 'is-dragging' : ''}`.trim()}
+      role="region"
+      aria-label={ariaLabel}
+      aria-description="Desliza horizontalmente con el mouse o usa el desplazamiento táctil."
+      onPointerDown={comenzarArrastre}
+      onPointerMove={moverTabla}
+      onPointerUp={terminarArrastre}
+      onPointerCancel={terminarArrastre}
+      onLostPointerCapture={terminarArrastre}
+    >
+      <table className={tableClassName}>
+        {children}
+      </table>
     </div>
   )
 }

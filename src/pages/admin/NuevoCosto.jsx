@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { leerExcel } from '../../utils/excel'
 import { crearCosto } from '../../services/costos'
+import ValidationNotice from '../../components/ValidationNotice'
 
 function NuevoCosto({ onGuardado, onCancelar }) {
   const [archivo, setArchivo] = useState(null)
@@ -100,6 +101,8 @@ function NuevoCosto({ onGuardado, onCancelar }) {
 
   return (
     <section className="nuevo-costo">
+      <ValidationNotice message={error} onClose={() => setError('')} />
+      <ValidationNotice message={mensaje} type="success" onClose={() => setMensaje('')} />
 
       {/* ======================================
           ENCABEZADO
@@ -166,7 +169,7 @@ function NuevoCosto({ onGuardado, onCancelar }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {costosExcel.map(costo => (
                     <span key={costo.numeroCosto} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', background: '#eaf1fc', color: '#234675' }}>
-                      <strong>#{costo.numeroCosto}</strong>
+                      <strong>{costo.numeroCosto}</strong>
                       <span>{costo.filas.length} líneas</span>
                       {costosGuardados.includes(costo.numeroCosto) && <span aria-label="Guardado">✓</span>}
                     </span>
@@ -211,20 +214,6 @@ function NuevoCosto({ onGuardado, onCancelar }) {
         </div>
       )}
 
-      {/* MENSAJE DE ERROR */}
-      {error && (
-        <div style={{ padding: '14px 18px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', display: 'flex', gap: '10px' }}>
-          <strong>Error:</strong> <span>{error}</span>
-        </div>
-      )}
-
-      {/* MENSAJE DE ÉXITO */}
-      {mensaje && (
-        <div style={{ padding: '14px 18px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', color: '#15803d', display: 'flex', gap: '10px' }}>
-          <strong>Éxito:</strong> <span>{mensaje}</span>
-        </div>
-      )}
-
       {/* VISTA PREVIA */}
       {costosExcel.length > 0 && (
         <div className="admin-conteo-tabla-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -260,7 +249,7 @@ function NuevoCosto({ onGuardado, onCancelar }) {
               <tbody>
                 {filasVistaPrevia.slice(0, 10).map((fila, index) => (
                   <tr key={`${fila.numeroCosto}-${fila.SKU}-${index}`}>
-                    <td><strong>#{fila.numeroCosto}</strong></td>
+                    <td><strong>{fila.numeroCosto}</strong></td>
                     <td><strong>{fila.SKU ?? fila.sku ?? fila.Sku ?? ''}</strong></td>
                     <td>{fila.Descripción ?? fila.Descripcion ?? fila.descripcion ?? ''}</td>
                     <td>{fila.Cantidad ?? fila.cantidad ?? ''}</td>
