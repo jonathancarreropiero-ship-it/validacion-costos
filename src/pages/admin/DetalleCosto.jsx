@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import ValidationNotice from "../../components/ValidationNotice";
 import ReconteoNoManifestados from "../../components/ReconteoNoManifestados";
@@ -34,6 +34,22 @@ function lineaTieneFactorModificado(detalle, conteos) {
   });
 }
 
+function obtenerCambiosFactor(detalles, conteos) {
+  return (detalles || []).flatMap((detalle) => {
+    const factorPlantilla = Number(detalle?.factor) > 0 ? Number(detalle.factor) : 1;
+    const cambios = (conteos || [])
+      .filter((conteo) => conteo.detalle_costo_id === detalle.id)
+      .sort((a, b) => a.numero_conteo - b.numero_conteo)
+      .flatMap((conteo) => {
+        const factorAplicado = Number(conteo.factor) > 0 ? Number(conteo.factor) : factorPlantilla;
+        return factorAplicado !== factorPlantilla
+          ? [{ numeroConteo: conteo.numero_conteo, factorPlantilla, factorAplicado }]
+          : [];
+      });
+    return cambios.length ? [{ id: detalle.id, sku: detalle.sku, cambios }] : [];
+  });
+}
+
 export default function DetalleCosto({ costo, onVolver }) {
   const [detalles, setDetalles] = useState([]);
   const [conteos, setConteos] = useState([]);
@@ -50,6 +66,8 @@ export default function DetalleCosto({ costo, onVolver }) {
   const [errorExportacion, setErrorExportacion] = useState("");
 
   const [filtro, setFiltro] = useState("todos");
+  const [modalFactoresAbierto, setModalFactoresAbierto] = useState(false);
+  const modalFactoresCostoVisto = useRef(null);
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [conteoSeleccionado, setConteoSeleccionado] = useState(null);
@@ -154,7 +172,8 @@ export default function DetalleCosto({ costo, onVolver }) {
         ...(reconteosNoManifestadosData || []).map(item => item.auditor_id),
         validacionApoyoData?.solicitante_id,
         validacionApoyoData?.validador_id,
-        ...(validacionApoyoData?.lineas || []).map(linea => linea.auditor_id)
+        ...(validacionApoyoData?.lineas || []).map(linea => linea.auditor_id),
+        ...(validacionApoyoData?.no_manifestados || []).map(linea => linea.auditor_id)
       ].filter(Boolean).map(String))];
 
       const respuestasAuditores = await Promise.all(auditorIds.map(async auditorId => {
@@ -186,6 +205,10 @@ export default function DetalleCosto({ costo, onVolver }) {
         solicitante_email: emailPorAuditor.get(String(validacionApoyoData.solicitante_id)) || "—",
         validador_email: emailPorAuditor.get(String(validacionApoyoData.validador_id)) || "—",
         lineas: (validacionApoyoData.lineas || []).map(linea => ({
+          ...linea,
+          auditor_email: emailPorAuditor.get(String(linea.auditor_id)) || "—"
+        })),
+        no_manifestados: (validacionApoyoData.no_manifestados || []).map(linea => ({
           ...linea,
           auditor_email: emailPorAuditor.get(String(linea.auditor_id)) || "—"
         }))
@@ -557,9 +580,26 @@ export default function DetalleCosto({ costo, onVolver }) {
   // =========================================================
   // FILTRO
   // =========================================================
+  const cambiosFactor = useMemo(
+    () => obtenerCambiosFactor(detalles, conteos),
+    [detalles, conteos]
+  );
+
+  useEffect(() => {
+    if (!costo?.id || cargando || !detalles.length) return;
+    const costoKey = String(costo.id);
+    if (modalFactoresCostoVisto.current === costoKey) return;
+    modalFactoresCostoVisto.current = costoKey;
+    if (cambiosFactor.length) setModalFactoresAbierto(true);
+  }, [costo?.id, cargando, detalles.length, cambiosFactor.length]);
+
   const detallesFiltrados = useMemo(() => {
     return detalles.filter((detalle) => {
-        const clasificacion = clasificarDetalleConConteos(detalle, conteos);
+      if (filtro === "factor_modificado") {
+        return lineaTieneFactorModificado(detalle, conteos);
+      }
+
+      const clasificacion = clasificarDetalleConConteos(detalle, conteos);
 
       if (filtro === "todos") {
         return true;
@@ -850,6 +890,42 @@ export default function DetalleCosto({ costo, onVolver }) {
 
         </div>
       </header>
+
+      {modalFactoresAbierto && (
+        <div
+          className="factor-change-modal-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setModalFactoresAbierto(false);
+          }}
+        >
+          <section className="factor-change-modal" role="dialog" aria-modal="true" aria-labelledby="factor-change-modal-title">
+            <span className="factor-change-modal-icon" aria-hidden="true">×</span>
+            <span className="section-kicker">CAMBIOS DE FACTOR</span>
+            <h2 id="factor-change-modal-title">Factores modificados en este costo</h2>
+            <p className="factor-change-modal-summary">
+              Se modificó el factor de <strong>{cambiosFactor.length}</strong> SKU respecto a la plantilla.
+            </p>
+            <ul className="factor-change-modal-list">
+              {cambiosFactor.map((item) => (
+                <li key={item.id}>
+                  <strong className="factor-change-sku">{item.sku || 'SKU sin código'}</strong>
+                  <div>
+                    {item.cambios.map((cambio) => (
+                      <span key={`${item.id}-${cambio.numeroConteo}`}>
+                        Conteo {cambio.numeroConteo}: plantilla × {cambio.factorPlantilla} <b>→</b> aplicado × {cambio.factorAplicado}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="factor-change-modal-button" onClick={() => setModalFactoresAbierto(false)}>
+              Entendido
+            </button>
+          </section>
+        </div>
+      )}
 
       {errorExportacion && (
         <div className="ui-notice-backdrop" role="presentation">
@@ -1313,6 +1389,16 @@ export default function DetalleCosto({ costo, onVolver }) {
               </span>
             </button>
 
+            <button
+              type="button"
+              className={`filtro-btn filtro-factor-modificado${filtro === "factor_modificado" ? " activo" : ""}`}
+              onClick={() => setFiltro("factor_modificado")}
+            >
+              <span className="filtro-btn-icon">×</span>
+              <span>Factor modificado</span>
+              <span className="filtro-btn-count">{cambiosFactor.length}</span>
+            </button>
+
           </div>
 
         </div>
@@ -1357,7 +1443,8 @@ export default function DetalleCosto({ costo, onVolver }) {
 
         </div>
 
-        <div className="tabla-wrapper">
+        <p className="table-swipe-hint"><span aria-hidden="true">↔</span> Desliza la tabla para ver todas las columnas</p>
+        <div className="tabla-wrapper" role="region" aria-label="Detalle de productos, desplazable horizontalmente" tabIndex={0}>
 
           <table className="tabla-detalle">
 
@@ -1702,8 +1789,9 @@ export default function DetalleCosto({ costo, onVolver }) {
           </div>
 
         ) : (
-
-          <div className="tabla-wrapper">
+          <>
+          <p className="table-swipe-hint"><span aria-hidden="true">↔</span> Desliza la tabla para ver todas las columnas</p>
+          <div className="tabla-wrapper" role="region" aria-label="Productos no manifestados, desplazable horizontalmente" tabIndex={0}>
 
             <table className="tabla-no-manifestados">
 
@@ -1731,6 +1819,7 @@ export default function DetalleCosto({ costo, onVolver }) {
                     );
                     const etapa = Number(costo?.conteo_habilitado);
                     const resultadosReconteo = reconteosNoManifestados.filter(reconteo => Number(reconteo.id) === Number(item.id));
+                    const validacionApoyoNoManifestado = validacionApoyo?.no_manifestados?.find(linea => Number(linea.no_manifestado_id) === Number(item.id));
 
                     return (
                       <tr key={item.id}>
@@ -1777,6 +1866,12 @@ export default function DetalleCosto({ costo, onVolver }) {
                           ) : (
                             <span className="no-manifestado-recount-empty">Aún no hay recuentos</span>
                           )}
+                          {validacionApoyoNoManifestado && (
+                            <div className={`no-manifestado-apoyo-validacion ${validacionApoyoNoManifestado.resultado === 'conforme' ? 'is-ok' : 'is-diff'}`}>
+                              <strong>Validación por apoyo · {validacionApoyoNoManifestado.resultado === 'conforme' ? 'Conforme' : 'No conforme'}</strong>
+                              <span>Conteo validado: {validacionApoyoNoManifestado.cantidad_validada} · {validacionApoyoNoManifestado.auditor_email}</span>
+                            </div>
+                          )}
                           <div className="no-manifestado-recount-buttons">
                             {etapa === 2 && !habilitadoDos && (
                               <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => habilitarReconteoNoManifestado(item, 2)}>Habilitar conteo 2</button>
@@ -1805,6 +1900,7 @@ export default function DetalleCosto({ costo, onVolver }) {
             </table>
 
           </div>
+          </>
         )}
 
       </section>

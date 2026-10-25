@@ -502,6 +502,14 @@ function CostosAdmin({ usuarioId }) {
         console.warn('No se pudo cargar el estado de la validación por apoyo:', errorValidacionApoyo)
       }
       try {
+        const { data: pendientesNoManifestados, error: errorPendientesNoManifestados } = await supabase.rpc('resumen_no_manifestados_conteo3_pendientes_admin')
+        if (errorPendientesNoManifestados) throw errorPendientesNoManifestados
+        const porCosto = new Map((pendientesNoManifestados || []).map(item => [String(item.costo_id), Number(item.cantidad_pendiente || 0)]))
+        for (const costo of costosActualizados) costo.no_manifestados_pendientes_apoyo = porCosto.get(String(costo.id)) || 0
+      } catch (errorPendientesNoManifestados) {
+        console.warn('No se pudo consultar la elegibilidad de no manifestados para apoyo:', errorPendientesNoManifestados)
+      }
+      try {
         const { data: participantes } = await supabase.rpc('participantes_apoyo_admin')
         const idsParticipantes = [...new Set((participantes || [])
           .flatMap(par => [par.usuario_1, par.usuario_2])
@@ -1518,7 +1526,8 @@ function CostosAdmin({ usuarioId }) {
             {(() => {
               const resultadoNormalizado = String(costoAcciones.resultado || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
               const validacionFinalEnCurso = costoAcciones.validacion_apoyo_pendiente || costoAcciones.validado_por_apoyo
-              const tercerConteoNoConforme = Number(costoAcciones.numero_ultimo_conteo) === 3 && resultadoNormalizado === 'no_conforme'
+              const tercerConteoNoConforme = (Number(costoAcciones.numero_ultimo_conteo) === 3 && resultadoNormalizado === 'no_conforme') || Number(costoAcciones.no_manifestados_pendientes_apoyo || 0) > 0
+              const costoListoParaValidacionFinal = costoAcciones.estado === 'terminado' && Number(costoAcciones.conteo_habilitado) === 3
               const conteoActualCompleto = Number(costoAcciones.numero_ultimo_conteo) === Number(costoAcciones.conteo_habilitado) && ['conforme', 'no_conforme'].includes(resultadoNormalizado)
               const estadoApoyoActual = Number(estadoApoyoAccion?.costoId) === Number(costoAcciones.id) && Number(estadoApoyoAccion?.numeroConteo) === Number(costoAcciones.conteo_habilitado)
               const apoyoVerificando = !estadoApoyoActual
@@ -1532,7 +1541,7 @@ function CostosAdmin({ usuarioId }) {
                     : estadoApoyoAccion.motivo === 'no_verificado'
                       ? 'No se pudo verificar'
                       : 'Conteo no disponible'
-              const mostrarSolicitudApoyo = !validacionFinalEnCurso && !costoAcciones.validado_por_apoyo && (costoAcciones.usuarios_apoyo?.length || 0) === 2 && tercerConteoNoConforme
+              const mostrarSolicitudApoyo = costoListoParaValidacionFinal && !validacionFinalEnCurso && !costoAcciones.validado_por_apoyo && tercerConteoNoConforme
               const mostrarHabilitarApoyo = [1, 2, 3].includes(Number(costoAcciones.conteo_habilitado)) && !conteoActualCompleto && resultadoNormalizado !== 'conforme' && !tercerConteoNoConforme && !validacionFinalEnCurso
               const mostrarGrupoApoyo = costoAcciones.validacion_apoyo_pendiente || costoAcciones.validado_por_apoyo || mostrarSolicitudApoyo || mostrarHabilitarApoyo
               return mostrarGrupoApoyo && (
