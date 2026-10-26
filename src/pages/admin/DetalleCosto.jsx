@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
+import { notificarCambioCosto } from "../../services/sincronizacionCostos";
 import ValidationNotice from "../../components/ValidationNotice";
 import ReconteoNoManifestados from "../../components/ReconteoNoManifestados";
 import "./DetalleCosto.css";
@@ -251,6 +252,7 @@ export default function DetalleCosto({ costo, onVolver }) {
       setAvisoReconteo(errorHabilitar.message || "No se pudo habilitar el recuento del SKU.");
       return;
     }
+    notificarCambioCosto(costo.id, 'no_manifestados_habilitados')
     await cargarDetalle();
   }
 

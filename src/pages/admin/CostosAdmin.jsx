@@ -14,6 +14,7 @@ import StatusBadge from '../../components/StatusBadge'
 import CostListFilters from '../../components/CostListFilters'
 import ScrollableTable from '../../components/ScrollableTable'
 import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
+import { escucharCambiosCostos, notificarCambioCosto } from '../../services/sincronizacionCostos'
 
 import DetalleCosto from './DetalleCosto'
 import ValidacionApoyo from '../../components/ValidacionApoyo'
@@ -293,6 +294,7 @@ function CostosAdmin({ usuarioId }) {
       mostrarAviso(error.message || 'No se pudo solicitar la validación por apoyo.')
       return
     }
+    notificarCambioCosto(costo.id, 'validacion_solicitada')
     mostrarAviso('La validación por apoyo quedó solicitada. Puede tomarla otro administrador o auditor que no haya realizado el Conteo 3.')
     await cargarCostos()
   }
@@ -301,9 +303,9 @@ function CostosAdmin({ usuarioId }) {
   // CARGAR COSTOS
   // ==========================================================
 
-  const cargarCostos = useCallback(async () => {
+  const cargarCostos = useCallback(async ({ silencioso = false } = {}) => {
     await Promise.resolve()
-    setLoading(true)
+    if (!silencioso) setLoading(true)
 
     try {
       const {
@@ -542,7 +544,7 @@ function CostosAdmin({ usuarioId }) {
         console.error('No se pudo recuperar la lista local:', errorCache)
       }
     } finally {
-      setLoading(false)
+      if (!silencioso) setLoading(false)
     }
   }, [usuarioId])
 
@@ -585,6 +587,38 @@ function CostosAdmin({ usuarioId }) {
     const timer = window.setTimeout(() => cargarCostos(), 0)
     return () => window.clearTimeout(timer)
   }, [cargarCostos])
+
+  // Refresca cambios de conteo y validación hechos en otra sesión mientras
+  // el administrador permanece en la lista, sin activar el estado de carga.
+  useEffect(() => {
+    if (conteoAdmin || apoyoEsperando || validacionApoyoSeleccionada) return undefined
+    let activo = true
+    let consultando = false
+    const actualizar = async () => {
+      if (!activo || consultando || document.visibilityState !== 'visible' || !navigator.onLine) return
+      consultando = true
+      try {
+        await cargarCostos({ silencioso: true })
+      } finally {
+        consultando = false
+      }
+    }
+    const intervalo = window.setInterval(actualizar, 8000)
+    document.addEventListener('visibilitychange', actualizar)
+    window.addEventListener('online', actualizar)
+    return () => {
+      activo = false
+      window.clearInterval(intervalo)
+      document.removeEventListener('visibilitychange', actualizar)
+      window.removeEventListener('online', actualizar)
+    }
+  }, [cargarCostos, conteoAdmin, apoyoEsperando, validacionApoyoSeleccionada])
+
+  useEffect(() => escucharCambiosCostos(() => {
+    if (!conteoAdmin && !apoyoEsperando && !validacionApoyoSeleccionada) {
+      void cargarCostos({ silencioso: true })
+    }
+  }), [cargarCostos, conteoAdmin, apoyoEsperando, validacionApoyoSeleccionada])
 
   useEffect(() => {
     if (!apoyoEsperando) return undefined
@@ -1080,6 +1114,7 @@ function CostosAdmin({ usuarioId }) {
       setCostos(actuales => actuales.map(item => Number(item.id) === Number(costo.id)
         ? { ...item, apoyoHabilitado: true }
         : item))
+      await cargarCostos({ silencioso: true })
       mostrarAviso(`Apoyo habilitado para el Conteo ${numeroConteo}. El costo permitirá como máximo dos usuarios.`, 'Apoyo habilitado con éxito')
     } catch (error) {
       const mensaje = String(error?.message || '')
@@ -1487,11 +1522,17 @@ function CostosAdmin({ usuarioId }) {
                     <div className="costos-actions">
                       <div className="costos-actions-primary">
                         <button className="costos-view-button" onClick={() => verDetalle(costo)} type="button" disabled={reiniciando === costo.id}>Ver detalle</button>
-                        {costo.validacion_apoyo_pendiente && costo.soy_validador_apoyo_final ? (
-                          <button className="costos-admin-count-button" onClick={() => setValidacionApoyoSeleccionada(costo)} type="button">
-                            Realizar última validación
-                          </button>
-                        ) : !costo.validado_por_apoyo && [1, 2, 3].includes(Number(costo.conteo_habilitado)) && String(costo.resultado || '').trim().toLowerCase() !== 'conforme' && (
+                        {costo.validacion_apoyo_pendiente ? (
+                          costo.soy_validador_apoyo_final ? (
+                            <button className="costos-admin-count-button" onClick={() => setValidacionApoyoSeleccionada(costo)} type="button">
+                              Realizar última validación
+                            </button>
+                          ) : (
+                            <span className="resultado-pendiente">
+                              {costo.soy_solicitante_apoyo_final ? 'Esperando validación por apoyo' : 'Validación en curso por otro usuario'}
+                            </span>
+                          )
+                        ) : costo.estado !== 'terminado' && !costo.validado_por_apoyo && [1, 2, 3].includes(Number(costo.conteo_habilitado)) && String(costo.resultado || '').trim().toLowerCase() !== 'conforme' && (
                           <button className="costos-admin-count-button" onClick={() => realizarConteo(costo)} disabled={reiniciando === costo.id || habilitando === costo.id || abriendoConteo === costo.id} type="button">
                             {abriendoConteo === costo.id ? 'Verificando…' : `Realizar conteo ${costo.conteo_habilitado}`}
                           </button>
@@ -1510,8 +1551,8 @@ function CostosAdmin({ usuarioId }) {
       {aviso && (
         <div className="ui-notice-backdrop" role="presentation" onClick={() => setAviso(null)}>
           <section className="ui-notice" role="alertdialog" aria-modal="true" aria-labelledby="ui-notice-title" onClick={event => event.stopPropagation()}>
-            <span className={`ui-notice-icon ui-notice-${aviso.tipo === 'success' ? 'success' : 'error'}`} aria-hidden="true">{aviso.tipo === 'success' ? '✓' : '!'}</span>
-            <h2 id="ui-notice-title">{aviso.titulo || (aviso.tipo === 'denegado' ? 'Acceso denegado' : aviso.tipo === 'error' ? 'No se pudo completar' : 'Operación completada')}</h2>
+            <span className={`ui-notice-icon ui-notice-${aviso.tipo === 'success' ? 'success' : 'error'}`} aria-hidden="true">{aviso.tipo === 'success' ? 'VC' : '!'}</span>
+            <h2 id="ui-notice-title">{aviso.titulo || (aviso.tipo === 'denegado' ? 'Acceso denegado' : aviso.tipo === 'error' ? 'No se pudo completar' : '')}</h2>
             <p>{aviso.mensaje}</p>
             <button type="button" className="ui-notice-button" onClick={() => { setAviso(null); window.location.reload() }}>Entendido</button>
           </section>
@@ -1597,6 +1638,11 @@ function CostosAdmin({ usuarioId }) {
         <ValidacionApoyo
           costo={validacionApoyoSeleccionada}
           onClose={() => setValidacionApoyoSeleccionada(null)}
+          onUnavailable={async () => {
+            setValidacionApoyoSeleccionada(null)
+            await cargarCostos({ silencioso: true })
+            mostrarAviso('El estado cambió mientras abrías la validación. Se actualizó la lista; revisa quién puede continuar.')
+          }}
           onSaved={async () => {
             await cargarCostos()
             setValidacionApoyoSeleccionada(null)

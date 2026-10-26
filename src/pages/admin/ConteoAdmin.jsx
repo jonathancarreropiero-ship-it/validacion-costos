@@ -10,6 +10,7 @@ import {
 } from '../../services/costos'
 
 import { supabase } from '../../supabaseClient'
+import { notificarCambioCosto } from '../../services/sincronizacionCostos'
 import { estaOnline, escucharConexion } from '../../services/offlineStorage'
 import ValidationNotice from '../../components/ValidationNotice'
 import CountQuantityEditor from '../../components/CountQuantityEditor'
@@ -703,6 +704,7 @@ function ConteoAdmin({
         : await supabase.from('no_manifestados').insert(registro)
       if (error) throw error
     }
+    if (noManifestados.length > 0) notificarCambioCosto(costo.id, 'no_manifestados_guardados')
   }
 
   function agregarNoManifestado() {

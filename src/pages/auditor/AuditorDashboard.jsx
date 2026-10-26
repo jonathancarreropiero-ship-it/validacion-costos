@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { supabase } from '../../supabaseClient'
+import { notificarCambioCosto } from '../../services/sincronizacionCostos'
 
 import {
   estaOnline,
@@ -1294,6 +1295,7 @@ function AuditorDashboard() {
       .insert(registros)
 
     if (errorInsertar) throw errorInsertar
+    notificarCambioCosto(costoId, 'no_manifestados_guardados')
   }
 
   async function reintentarGuardadoNoManifestados() {

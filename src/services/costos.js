@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabaseClient'
+import { notificarCambioCosto } from './sincronizacionCostos'
 
 // ============================================================
 // CREAR COSTO
@@ -631,6 +632,8 @@ export async function guardarConteoCosto(
     throw error
   }
 
+  notificarCambioCosto(costoId, 'conteo_guardado')
+
   if (data?.esperando_segundo) {
     return {
       ...data,
@@ -754,6 +757,7 @@ export async function habilitarConteo(
   }
 
   if (!data?.success) throw new Error('No se pudo habilitar el conteo.')
+  notificarCambioCosto(costoId, 'conteo_habilitado')
   return data
 }
 
@@ -763,6 +767,7 @@ export async function habilitarApoyoConteo(costoId, numeroConteo) {
     p_numero_conteo: Number(numeroConteo)
   })
   if (error) throw error
+  notificarCambioCosto(costoId, 'apoyo_habilitado')
   return data
 }
 
@@ -862,6 +867,8 @@ export async function iniciarCosto(costoId) {
   if (!data?.success) {
     throw new Error('No se pudo iniciar el costo.')
   }
+
+  if (!data?.esperando_segundo) notificarCambioCosto(costoId, 'costo_ingresado')
 
   return data
 }

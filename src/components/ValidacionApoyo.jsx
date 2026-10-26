@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import CountQuantityEditor from './CountQuantityEditor'
+import { notificarCambioCosto } from '../services/sincronizacionCostos'
 
-export default function ValidacionApoyo({ costo, onClose, onSaved }) {
+export default function ValidacionApoyo({ costo, onClose, onSaved, onUnavailable }) {
   const [lineas, setLineas] = useState([])
   const [noManifestados, setNoManifestados] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -16,14 +17,17 @@ export default function ValidacionApoyo({ costo, onClose, onSaved }) {
       supabase.rpc('obtener_no_manifestados_validacion_apoyo', { p_costo_id: Number(costo.id) })
     ]).then(([respuestaLineas, respuestaNoManifestados]) => {
         if (!activo) return
-        if (respuestaLineas.error || respuestaNoManifestados.error) {
-          const errorCarga = respuestaLineas.error || respuestaNoManifestados.error
+        const errorCarga = respuestaLineas.error || respuestaNoManifestados.error
+        if (errorCarga) {
           setError(errorCarga.message || 'No se pudieron cargar las líneas de validación.')
         } else {
           setLineas((respuestaLineas.data || []).map(linea => ({ ...linea, cantidades: [''], factor: Number(linea.factor) > 0 ? String(linea.factor) : '1' })))
           setNoManifestados((respuestaNoManifestados.data || []).map(linea => ({ ...linea, cantidadValidada: '' })))
+          notificarCambioCosto(costo.id, 'validacion_tomada')
         }
         setCargando(false)
+        const errorAsignacion = errorCarga && /otro usuario ya tomó|otro usuario ya tomo|no hay una validación|no tienes asignada|quienes realizaron el conteo 3/i.test(errorCarga.message || '')
+        if (errorAsignacion) onUnavailable?.(errorCarga.message)
       })
     return () => { activo = false }
   }, [costo.id])
@@ -45,8 +49,12 @@ export default function ValidacionApoyo({ costo, onClose, onSaved }) {
     setGuardando(false)
     if (errorGuardar) {
       setError(errorGuardar.message || 'No se pudo guardar la validación.')
+      if (/otro usuario ya tomó|otro usuario ya tomo|no tienes asignada|ya no está disponible|quienes realizaron el conteo 3/i.test(errorGuardar.message || '')) {
+        onUnavailable?.(errorGuardar.message)
+      }
       return
     }
+    notificarCambioCosto(costo.id, 'validacion_guardada')
     onSaved?.(data)
     onClose?.()
   }

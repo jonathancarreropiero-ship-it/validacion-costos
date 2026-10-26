@@ -7,6 +7,7 @@ import ScrollableTable from '../../components/ScrollableTable'
 import ReconteoNoManifestados from '../../components/ReconteoNoManifestados'
 import ValidacionApoyo from '../../components/ValidacionApoyo'
 import { supabase } from '../../supabaseClient'
+import { escucharCambiosCostos } from '../../services/sincronizacionCostos'
 import { filtrarListaCostos, formatoFechaCosto } from '../../utils/costosFiltros'
 
 function AuditorCostos({
@@ -75,6 +76,16 @@ function AuditorCostos({
       window.clearInterval(intervalo)
     }
   }, [])
+
+  useEffect(() => escucharCambiosCostos(() => {
+    if (costosProp.length > 0) onActualizar?.()
+    else void cargarCostos()
+    void supabase.rpc('estados_validacion_apoyo_costos').then(({ data, error }) => {
+      if (!error && Array.isArray(data)) {
+        setEstadosValidacionApoyo(new Map(data.map(estado => [Number(estado.costo_id), estado])))
+      }
+    })
+  }), [costosProp.length, onActualizar])
 
   // ==========================================================
   // CARGAR COSTOS
@@ -821,6 +832,15 @@ function AuditorCostos({
         <ValidacionApoyo
           costo={validacionApoyoSeleccionada}
           onClose={() => setValidacionApoyoSeleccionada(null)}
+          onUnavailable={async () => {
+            setValidacionApoyoSeleccionada(null)
+            await actualizarCostos()
+            const { data, error } = await supabase.rpc('estados_validacion_apoyo_costos')
+            if (!error && Array.isArray(data)) {
+              setEstadosValidacionApoyo(new Map(data.map(estado => [Number(estado.costo_id), estado])))
+            }
+            setAlerta({ tipo: 'error', titulo: 'Validación actualizada', mensaje: 'El estado cambió mientras abrías la validación. Se actualizó la lista; revisa quién puede continuar.' })
+          }}
           onSaved={async resultado => {
             setCostosCargados(actuales => actuales.map(costo => Number(costo.id) === Number(validacionApoyoSeleccionada.id)
               ? { ...costo, validado_por_apoyo: true, resultado: resultado?.resultado === 'conforme' ? 'conforme' : 'no_conforme' }

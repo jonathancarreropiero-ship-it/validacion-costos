@@ -3192,6 +3192,11 @@ body {
 .cost-result-filter-standalone .cost-result-options{display:flex;width:100%;flex:0 1 auto;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:7px}
 @media(max-width:700px){.cost-result-filter-standalone{flex-direction:column;align-items:flex-start}.cost-result-filter-standalone .cost-result-options{width:100%;flex-wrap:wrap;justify-content:flex-start}}
 
+/* Acciones secundarias en azul suave para dar jerarquía sin saturar la tabla. */
+.costos-more-actions-trigger{border-color:#cbd8eb;background:#eaf0fa;color:#284b7e;box-shadow:none}
+.costos-more-actions-trigger:hover{border-color:#b7c9e5;background:#dfe9f7;color:#203f6b;box-shadow:0 3px 9px rgba(39,76,126,.10);transform:translateY(-1px)}
+.costos-more-actions-trigger:focus-visible{outline-color:rgba(74,112,169,.28)}
+
 .support-validation-section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 8px;color:#1d3558;font-size:13px;font-weight:800}
 .support-validation-section-title span{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:8px;background:#eaf1ff;color:#315fb8;font-size:11px}
 .support-validation-section-extra{padding-top:15px;border-top:1px solid #e2eaf4}

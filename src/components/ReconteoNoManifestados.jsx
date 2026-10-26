@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { notificarCambioCosto } from '../services/sincronizacionCostos'
 
 export default function ReconteoNoManifestados({ costoId, numeroConteo, sku, onClose, onSaved }) {
   const [lineas, setLineas] = useState([])
@@ -46,6 +47,7 @@ export default function ReconteoNoManifestados({ costoId, numeroConteo, sku, onC
       setError(errorGuardar.message || 'No se pudieron guardar los recuentos.')
       return
     }
+    notificarCambioCosto(costoId, 'no_manifestados_guardados')
     onSaved?.()
     onClose?.()
   }
