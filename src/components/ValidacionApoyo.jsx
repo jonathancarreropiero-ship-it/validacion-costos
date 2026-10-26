@@ -30,7 +30,7 @@ export default function ValidacionApoyo({ costo, onClose, onSaved, onUnavailable
         if (errorAsignacion) onUnavailable?.(errorCarga.message)
       })
     return () => { activo = false }
-  }, [costo.id])
+  }, [costo.id, onUnavailable])
 
   async function guardar(event) {
     event.preventDefault()

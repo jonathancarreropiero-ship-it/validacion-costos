@@ -43,7 +43,6 @@ function ConteoAdmin({
   const [mensaje, setMensaje] = useState('')
 
   const [usuarioId, setUsuarioId] = useState(usuarioIdInicial || null)
-  const [borradorRecuperado, setBorradorRecuperado] = useState(false)
   const [conexionOnline, setConexionOnline] = useState(estaOnline())
   const onVolverRef = useRef(onVolver)
 
@@ -190,11 +189,6 @@ function ConteoAdmin({
         setCargando(true)
         setError('')
         setMensaje('')
-        setBorradorRecuperado(false)
-        const claveAvisoBorrador = 'conteo-admin-omitir-aviso-borrador'
-        const omitirAvisoBorrador = sessionStorage.getItem(claveAvisoBorrador) === '1'
-        sessionStorage.removeItem(claveAvisoBorrador)
-
         let datos
         try { datos = await obtenerDetallesCostoAdmin(costo.id, numeroConteo) } catch (errorRemoto) {
           const local = claveBorrador ? JSON.parse(localStorage.getItem(claveBorrador) || 'null') : null
@@ -345,11 +339,6 @@ function ConteoAdmin({
                   )
                 }
 
-                if (!omitirAvisoBorrador) setBorradorRecuperado(true)
-
-                setMensaje(
-                  'Se recuperó tu avance guardado.'
-                )
               }
             }
 
@@ -358,7 +347,6 @@ function ConteoAdmin({
             )
             if (Array.isArray(borradorAdicional?.noManifestados)) {
               setNoManifestados(borradorAdicional.noManifestados)
-              if (!omitirAvisoBorrador) setBorradorRecuperado(true)
             }
             if (borradorAdicional?.nuevoNoManifestado) {
               setNuevoNoManifestado({
@@ -366,7 +354,6 @@ function ConteoAdmin({
                 cantidad: String(borradorAdicional.nuevoNoManifestado.cantidad || ''),
                 observacion: String(borradorAdicional.nuevoNoManifestado.observacion || '')
               })
-              if (!omitirAvisoBorrador) setBorradorRecuperado(true)
             }
           } catch (errorBorrador) {
             console.error(
@@ -914,7 +901,6 @@ function ConteoAdmin({
       }))
       if (!guardarBorradorNoManifestadosLocal()) return
       setError('')
-      setBorradorRecuperado(false)
       setMensaje('El borrador se guardó en este equipo.')
     } catch (errorBorrador) {
       console.error('Error guardando borrador admin:', errorBorrador)
@@ -1027,13 +1013,11 @@ function ConteoAdmin({
   return (
     <div className="admin-conteo">
       <ValidationNotice
-        message={error || (borradorRecuperado ? 'Se recuperó automáticamente el avance que tenías guardado.' : mensaje)}
-        title={error ? undefined : borradorRecuperado ? 'Avance recuperado' : undefined}
+        message={error || mensaje}
         type={error ? 'error' : 'success'}
         onClose={() => {
-          if (!error && borradorRecuperado) sessionStorage.setItem('conteo-admin-omitir-aviso-borrador', '1')
           if (error) setError('')
-          else { setMensaje(''); setBorradorRecuperado(false) }
+          else setMensaje('')
         }}
       />
 
