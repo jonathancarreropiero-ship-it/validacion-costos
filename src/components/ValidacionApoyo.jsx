@@ -12,23 +12,42 @@ export default function ValidacionApoyo({ costo, onClose, onSaved, onUnavailable
 
   useEffect(() => {
     let activo = true
-    Promise.all([
-      supabase.rpc('obtener_lineas_validacion_apoyo', { p_costo_id: Number(costo.id) }),
-      supabase.rpc('obtener_no_manifestados_validacion_apoyo', { p_costo_id: Number(costo.id) })
-    ]).then(([respuestaLineas, respuestaNoManifestados]) => {
+    async function cargarLineas() {
+      try {
+        // Esta llamada reclama la validación de forma atómica. Cargar ambos
+        // RPC en paralelo permitía que el de no manifestados llegara primero
+        // y rechazara al usuario antes de que se asignara el validador.
+        const respuestaLineas = await supabase.rpc('obtener_lineas_validacion_apoyo', {
+          p_costo_id: Number(costo.id)
+        })
         if (!activo) return
-        const errorCarga = respuestaLineas.error || respuestaNoManifestados.error
-        if (errorCarga) {
-          setError(errorCarga.message || 'No se pudieron cargar las líneas de validación.')
-        } else {
-          setLineas((respuestaLineas.data || []).map(linea => ({ ...linea, cantidades: [''], factor: Number(linea.factor) > 0 ? String(linea.factor) : '1' })))
-          setNoManifestados((respuestaNoManifestados.data || []).map(linea => ({ ...linea, cantidadValidada: '' })))
-          notificarCambioCosto(costo.id, 'validacion_tomada')
+        if (respuestaLineas.error) {
+          setError(respuestaLineas.error.message || 'No se pudieron cargar las líneas de validación.')
+          const errorAsignacion = /otro usuario ya tomó|otro usuario ya tomo|no hay una validación|no tienes asignada|quienes realizaron el conteo 3/i.test(respuestaLineas.error.message || '')
+          if (errorAsignacion) onUnavailable?.(respuestaLineas.error.message)
+          return
         }
-        setCargando(false)
-        const errorAsignacion = errorCarga && /otro usuario ya tomó|otro usuario ya tomo|no hay una validación|no tienes asignada|quienes realizaron el conteo 3/i.test(errorCarga.message || '')
-        if (errorAsignacion) onUnavailable?.(errorCarga.message)
-      })
+
+        const respuestaNoManifestados = await supabase.rpc('obtener_no_manifestados_validacion_apoyo', {
+          p_costo_id: Number(costo.id)
+        })
+        if (!activo) return
+        if (respuestaNoManifestados.error) {
+          setError(respuestaNoManifestados.error.message || 'No se pudieron cargar los SKU no manifestados.')
+          return
+        }
+
+        setLineas((respuestaLineas.data || []).map(linea => ({ ...linea, cantidades: [''], factor: Number(linea.factor) > 0 ? String(linea.factor) : '1' })))
+        setNoManifestados((respuestaNoManifestados.data || []).map(linea => ({ ...linea, cantidadValidada: '' })))
+        notificarCambioCosto(costo.id, 'validacion_tomada')
+      } catch (errorCarga) {
+        if (activo) setError(errorCarga?.message || 'No se pudieron cargar las líneas de validación.')
+      } finally {
+        if (activo) setCargando(false)
+      }
+    }
+
+    cargarLineas()
     return () => { activo = false }
   }, [costo.id, onUnavailable])
 

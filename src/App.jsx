@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
 
 import Login from './pages/Login'
@@ -33,9 +33,11 @@ function App() {
     roleLoading,
     setRoleLoading
   ] = useState(false)
+  const authEventVersion = useRef(0)
   const sessionUserId = session?.user?.id ?? null
 
   const comprobarSesion = useCallback(async () => {
+    const versionInicial = authEventVersion.current
     try {
       const {
         data: { session: sessionActual },
@@ -44,14 +46,12 @@ function App() {
 
       if (error) {
         console.error('Error obteniendo sesión:', error)
-        setSession(null)
         return
       }
 
-      setSession(sessionActual)
+      if (authEventVersion.current === versionInicial) setSession(sessionActual)
     } catch (error) {
       console.error('Error comprobando sesión:', error)
-      setSession(null)
     } finally {
       setLoading(false)
     }
@@ -87,6 +87,7 @@ function App() {
       }
     } = supabase.auth.onAuthStateChange(
       (_event, sessionActual) => {
+        authEventVersion.current += 1
 
         console.log(
           'Cambio de autenticación:',
@@ -96,6 +97,7 @@ function App() {
         setSession(
           sessionActual
         )
+        setLoading(false)
 
         if (!sessionActual) {
           setRole(null)

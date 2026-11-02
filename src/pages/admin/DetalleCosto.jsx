@@ -592,7 +592,9 @@ export default function DetalleCosto({ costo, onVolver }) {
     const costoKey = String(costo.id);
     if (modalFactoresCostoVisto.current === costoKey) return;
     modalFactoresCostoVisto.current = costoKey;
-    if (cambiosFactor.length) setModalFactoresAbierto(true);
+    if (!cambiosFactor.length) return;
+    const timer = window.setTimeout(() => setModalFactoresAbierto(true), 0);
+    return () => window.clearTimeout(timer);
   }, [costo?.id, cargando, detalles.length, cambiosFactor.length]);
 
   const detallesFiltrados = useMemo(() => {

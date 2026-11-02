@@ -5,7 +5,7 @@ const TOPIC = 'costos-cambios-en-vivo-v1'
 // Solo difunde una señal de invalidación; nunca envía datos del costo.
 export function notificarCambioCosto(costoId, accion = 'actualizado') {
   if (!costoId || !navigator.onLine) return
-  const channel = supabase.channel(TOPIC, { config: { broadcast: { self: false } } })
+  const channel = supabase.channel(TOPIC, { config: { private: true, broadcast: { self: false } } })
   let cerrado = false
   const limpiar = () => {
     if (cerrado) return
@@ -29,7 +29,7 @@ export function notificarCambioCosto(costoId, accion = 'actualizado') {
 
 export function escucharCambiosCostos(onCambio) {
   const channel = supabase
-    .channel(TOPIC, { config: { broadcast: { self: false } } })
+    .channel(TOPIC, { config: { private: true, broadcast: { self: false } } })
     .on('broadcast', { event: 'cambio' }, ({ payload }) => {
       const costoId = Number(payload?.costoId)
       if (Number.isSafeInteger(costoId) && costoId > 0) {

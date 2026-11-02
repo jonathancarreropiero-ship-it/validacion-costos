@@ -1,3 +1,5 @@
+import { filtrarListaCostos, obtenerCategoriaResultadoCosto } from '../utils/costosFiltros'
+
 const RESULTADOS = [
   { valor: 'todos', etiqueta: 'Todos' },
   { valor: 'conforme', etiqueta: 'Conforme', clase: 'conforme' },
@@ -17,16 +19,26 @@ export default function CostListFilters({
   resultado = 'todos',
   onResultadoChange,
   onLimpiar,
+  costos = null,
   soloResultados = false,
   ocultarResultados = false
 }) {
   const hayFiltros = Boolean(busqueda || fecha || estado !== 'todos' || resultado !== 'todos')
+  const costosEnContexto = Array.isArray(costos)
+    ? filtrarListaCostos(costos, { busqueda, fecha, modoFecha, estado, resultado: 'todos' })
+    : null
+  const resultadosDisponibles = costosEnContexto
+    ? new Set(costosEnContexto.map(obtenerCategoriaResultadoCosto))
+    : null
+  const resultadosVisibles = resultadosDisponibles
+    ? RESULTADOS.filter(opcion => opcion.valor === 'todos' || resultadosDisponibles.has(opcion.valor))
+    : RESULTADOS
 
   const controlResultado = (
     <div className={`cost-result-filter${soloResultados ? ' cost-result-filter-standalone' : ''}`}>
       <span>Resultado</span>
       <div className="cost-result-options" role="group" aria-label="Filtrar por resultado">
-        {RESULTADOS.map(opcion => (
+        {resultadosVisibles.map(opcion => (
           <button
             key={opcion.valor}
             type="button"

@@ -1110,6 +1110,16 @@ function CostosAdmin({ usuarioId }) {
     const numeroConteo = Number(costo.conteo_habilitado)
     try {
       setHabilitando(costo.id)
+      const { count: lineasSku, error: errorLineas } = await supabase
+        .from('detalle_costos')
+        .select('id', { count: 'exact', head: true })
+        .eq('costo_id', Number(costo.id))
+      if (errorLineas) throw errorLineas
+      if (Number(lineasSku) < 2) {
+        setCostoAcciones(null)
+        mostrarAviso('No se puede habilitar apoyo para un costo con una sola línea. Se requieren al menos dos líneas SKU.', 'Apoyo no disponible')
+        return
+      }
       await habilitarApoyoConteo(costo.id, numeroConteo)
       setCostos(actuales => actuales.map(item => Number(item.id) === Number(costo.id)
         ? { ...item, apoyoHabilitado: true }
@@ -1314,6 +1324,11 @@ function CostosAdmin({ usuarioId }) {
 
       <div className="cost-result-toolbar">
         <CostListFilters
+          costos={costos}
+          busqueda={busqueda}
+          fecha={fechaFiltro}
+          modoFecha={modoFechaFiltro}
+          estado={estadoFiltro}
           resultado={resultadoFiltro}
           onResultadoChange={setResultadoFiltro}
           soloResultados
@@ -1325,6 +1340,7 @@ function CostosAdmin({ usuarioId }) {
 
       <div className="costos-toolbar">
         <CostListFilters
+          costos={costos}
           busqueda={busqueda}
           onBusquedaChange={manejarBusqueda}
           fecha={fechaFiltro}

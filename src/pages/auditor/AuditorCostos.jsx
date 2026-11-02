@@ -370,6 +370,11 @@ function AuditorCostos({
 
       <div className="cost-result-toolbar">
         <CostListFilters
+          costos={costos}
+          busqueda={busqueda}
+          fecha={fechaFiltro}
+          modoFecha={modoFechaFiltro}
+          estado={estadoFiltro}
           resultado={resultadoFiltro}
           onResultadoChange={setResultadoFiltro}
           soloResultados
@@ -380,6 +385,7 @@ function AuditorCostos({
 
       <div className="auditor-costos-toolbar">
         <CostListFilters
+          costos={costos}
           busqueda={busqueda}
           onBusquedaChange={setBusqueda}
           fecha={fechaFiltro}
